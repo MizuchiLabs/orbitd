@@ -47,11 +47,12 @@ Download the latest [release](https://github.com/mizuchilabs/orbitd/releases) fo
 
 Orbitd can be configured via command-line flags or environment variables:
 
-| Flag               | Environment Variable | Default | Description                                        |
-| ------------------ | -------------------- | ------- | -------------------------------------------------- |
-| `--interval`, `-i` | `ORBITD_INTERVAL`    | `12h`   | How often to check for updates (e.g., 5m, 1h, 24h) |
-| `--cleanup`, `-c`  | `ORBITD_CLEANUP`     | `true`  | Remove old images after successful updates         |
-| `--debug`, `-d`    | `ORBITD_DEBUG`       | `false` | Enable debug logging for detailed output           |
+| Flag         | Environment Variable | Default  | Description                                        |
+| ------------ | -------------------- | -------- | -------------------------------------------------- |
+| `--policy`   | `ORBITD_POLICY`      | `digest` | Update policy (patch, minor, major, digest)        |
+| `--interval` | `ORBITD_INTERVAL`    | `12h`    | How often to check for updates (e.g., 5m, 1h, 24h) |
+| `--cleanup`  | `ORBITD_CLEANUP`     | `true`   | Remove old images after successful updates         |
+| `--debug`    | `ORBITD_DEBUG`       | `false`  | Enable debug logging for detailed output           |
 
 ## How It Works
 
@@ -71,6 +72,7 @@ Orbitd can be configured via command-line flags or environment variables:
 > - Only updates containers that are currently running, stopped containers are left untouched.
 > - Updates only when image digest actually changes.
 > - By default watches all containers, you can disable watching a container by adding a label `orbitd.enable=false` to it.
+> - You can set per container update policy by adding a label e.g. `orbitd.policy=patch` to it.
 
 ## License
 
