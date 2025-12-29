@@ -33,6 +33,18 @@ upx:
     lzma: true
     compress: best
 
+kos:
+  - base_image: alpine
+    repositories: [ghcr.io/mizuchilabs/orbitd]
+    bare: true
+    preserve_import_paths: false
+    tags:
+      - "{{.Version}}"
+      - latest
+    platforms:
+      - linux/amd64
+      - linux/arm64
+
 binary_signs:
   - cmd: cosign
     artifacts: binary

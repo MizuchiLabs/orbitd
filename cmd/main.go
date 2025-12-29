@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -32,6 +33,15 @@ func main() {
    It monitors running containers for new image versions and seamlessly recreates them with
    the latest digest while preserving all configuration, networks, volumes, and labels.
    Perfect for self-hosted services and Docker Compose setups.`,
+		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
+			if _, err := os.Stat("/var/run/docker.sock"); err != nil {
+				slog.Warn("Docker socket not found", "path", "/var/run/docker.sock")
+			}
+			if _, ok := os.LookupEnv("DOCKER_HOST"); !ok {
+				_ = os.Setenv("DOCKER_HOST", "unix:///var/run/docker.sock")
+			}
+			return ctx, nil
+		},
 		DefaultCommand: "start",
 		Commands: []*cli.Command{
 			{
@@ -40,6 +50,7 @@ func main() {
 				Usage:   "Start the orbitd daemon to monitor and update containers",
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					cfg := config.Load(cmd)
+
 					return updater.New(ctx, cfg)
 				},
 			},
