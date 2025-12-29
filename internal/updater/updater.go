@@ -29,7 +29,7 @@ type Updater struct {
 // New creates a new Updater instance and starts the update daemon.
 // It establishes a connection to the Docker daemon and begins monitoring containers.
 func New(ctx context.Context, cfg *config.Config) error {
-	cli, err := client.New(context.Background())
+	cli, err := client.New(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create docker client: %w", err)
 	}
@@ -73,6 +73,13 @@ func (u *Updater) RunOnce(ctx context.Context) error {
 
 	for _, c := range containers.Items {
 		containerName := strings.Split(c.Names[0], "/")[1]
+
+		// Skip containers with disable label
+		if c.Labels["orbitd.enable"] == "false" {
+			slog.Debug("Skipping disabled container", "container", containerName)
+			continue
+		}
+
 		slog.Debug("Checking container", "container", containerName)
 		if err := u.updateContainer(ctx, c.Image, c.ImageID, c.ID); err != nil {
 			slog.Error("Failed to update container", "container", containerName, "error", err)
@@ -145,7 +152,7 @@ func (u *Updater) updateContainer(
 	ctr, err := container.Run(
 		ctx,
 		container.WithImage(imageName),
-		container.WithName(ins.Container.Name),
+		container.WithName(strings.TrimPrefix(ins.Container.Name, "/")),
 		container.WithConfigModifier(
 			func(config *dockercontainer.Config) {
 				*config = *ins.Container.Config

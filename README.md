@@ -70,6 +70,7 @@ Orbitd can be configured via command-line flags or environment variables:
 
 > - Only updates containers that are currently running, stopped containers are left untouched.
 > - Updates only when image digest actually changes.
+> - By default watches all containers, you can disable watching a container by adding a label `orbitd.enable=false` to it.
 
 ## License
 
