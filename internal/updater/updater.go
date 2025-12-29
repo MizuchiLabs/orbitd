@@ -119,6 +119,7 @@ func (u *Updater) updateContainer(ctx context.Context, c dockercontainer.Summary
 	if err := image.Pull(
 		ctx,
 		targetImage,
+		image.WithPullClient(u.docker),
 		image.WithPullHandler(func(r io.ReadCloser) error {
 			_, err := io.Copy(io.Discard, r)
 			return err
@@ -165,6 +166,7 @@ func (u *Updater) recreateContainer(
 
 	ctr, err := container.Run(
 		ctx,
+		container.WithClient(u.docker),
 		container.WithImage(imageName),
 		container.WithName(strings.TrimPrefix(ins.Container.Name, "/")),
 		container.WithConfigModifier(

@@ -40,6 +40,16 @@ func main() {
 			if _, ok := os.LookupEnv("DOCKER_HOST"); !ok {
 				_ = os.Setenv("DOCKER_HOST", "unix:///var/run/docker.sock")
 			}
+
+			// Create empty Docker config if it doesn't exist
+			dockerConfigDir := os.ExpandEnv("$HOME/.docker")
+			dockerConfigPath := dockerConfigDir + "/config.json"
+			if _, err := os.Stat(dockerConfigPath); os.IsNotExist(err) {
+				if err := os.MkdirAll(dockerConfigDir, 0o750); err == nil {
+					_ = os.WriteFile(dockerConfigPath, []byte("{}"), 0o600)
+					slog.Debug("Created empty Docker config", "path", dockerConfigPath)
+				}
+			}
 			return ctx, nil
 		},
 		DefaultCommand: "start",
