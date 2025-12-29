@@ -19,6 +19,7 @@ Orbitd monitors your running containers and seamlessly updates them to the lates
 docker run -d \
    --name orbitd \
    -v /var/run/docker.sock:/var/run/docker.sock \
+   -e ORBITD_POLICY=digest \
    -e ORBITD_INTERVAL=12h \
    -e ORBITD_CLEANUP=true \
    ghcr.io/mizuchilabs/orbitd:latest
@@ -34,6 +35,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
+      - ORBITD_POLICY=digest
       - ORBITD_INTERVAL=12h
       - ORBITD_CLEANUP=true
     restart: unless-stopped
