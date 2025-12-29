@@ -1,0 +1,40 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "**/*.go"
+  pull_request:
+    branches: [main]
+    paths:
+      - "**/*.go"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: "go.mod"
+
+      - name: Install Task
+        uses: go-task/setup-task@v1
+
+      - name: Install GolangCI-Lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          args: --timeout=10m
+
+      - name: Run security checks
+        uses: securego/gosec@master
+        with:
+          args: -exclude-generated ./...
+
+      - name: Run tests
+        run: task lint

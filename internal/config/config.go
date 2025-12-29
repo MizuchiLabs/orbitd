@@ -16,6 +16,7 @@ import (
 
 // Config holds the runtime configuration for the updater daemon.
 type Config struct {
+	Policy   string        // Update policy for semantic versioning
 	Interval time.Duration // How often to check for container updates
 	Cleanup  bool          // Whether to remove old images after updates
 }
@@ -34,6 +35,7 @@ func Load(cmd *cli.Command) *Config {
 		}
 
 		initLogger(cmd)
+		cfg.Policy = cmd.String("policy")
 		cfg.Interval = cmd.Duration("interval")
 		cfg.Cleanup = cmd.Bool("cleanup")
 	})

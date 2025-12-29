@@ -67,6 +67,13 @@ func main() {
 				Usage:   "Enable debug logging for detailed output",
 				Sources: cli.EnvVars("ORBITD_DEBUG"),
 			},
+			&cli.StringFlag{
+				Name:    "policy",
+				Aliases: []string{"p"},
+				Usage:   "Update policy (patch, minor, major, digest)",
+				Value:   "digest",
+				Sources: cli.EnvVars("ORBITD_POLICY"),
+			},
 			&cli.DurationFlag{
 				Name:    "interval",
 				Aliases: []string{"i"},
