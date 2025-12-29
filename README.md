@@ -34,6 +34,7 @@ services:
     container_name: orbitd
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      # - ~/.docker/config.json:/root/.docker/config.json:ro # optional (for private registries)
     environment:
       - ORBITD_POLICY=digest
       - ORBITD_INTERVAL=12h

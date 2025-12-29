@@ -206,18 +206,21 @@ func (u *Updater) cleanupImage(ctx context.Context, imageID string) {
 		imageID,
 		image.WithRemoveOptions(dockerclient.ImageRemoveOptions{
 			Force:         false,
-			PruneChildren: false,
+			PruneChildren: true,
 		}),
 	)
 	if err != nil {
-		slog.Warn("Failed to remove old image", "error", err)
+		slog.Warn("Failed to remove image", "error", err)
 		return
 	}
 
-	// Only log actually deleted images, not untagged layers
+	// Only log actually deleted/untagged images
 	for _, r := range res.Items {
 		if r.Deleted != "" {
-			slog.Debug("Removed old image", "id", r.Deleted)
+			slog.Debug("Removed image", "id", r.Deleted)
+		}
+		if r.Untagged != "" {
+			slog.Debug("Untagged image", "id", r.Untagged)
 		}
 	}
 }
