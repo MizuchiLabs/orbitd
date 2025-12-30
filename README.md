@@ -1,4 +1,12 @@
-# Orbitd 🛰️
+<p align="center">
+<img src="./github/logo.svg" width="80">
+<br><br>
+<img alt="GitHub Tag" src="https://img.shields.io/github/v/tag/MizuchiLabs/beacon?label=Version">
+<img alt="GitHub License" src="https://img.shields.io/github/license/MizuchiLabs/beacon">
+<img alt="GitHub Issues or Pull Requests" src="https://img.shields.io/github/issues/MizuchiLabs/beacon">
+</p>
+
+# Orbitd
 
 A lightweight container update daemon that automatically keeps your Docker containers up-to-date.
 
