@@ -39,6 +39,7 @@ func Load(cmd *cli.Command) *Config {
 		cfg.Policy = cmd.String("policy")
 		cfg.Interval = cmd.Duration("interval")
 		cfg.Cleanup = cmd.Bool("cleanup")
+		cfg.RequireLabel = cmd.Bool("require-label")
 	})
 	return cfg
 }
