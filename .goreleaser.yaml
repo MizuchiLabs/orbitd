@@ -37,6 +37,7 @@ kos:
     repositories: [ghcr.io/mizuchilabs/orbitd]
     bare: true
     preserve_import_paths: false
+    sbom: none
     tags:
       - "{{.Version}}"
       - latest

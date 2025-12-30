@@ -42,5 +42,9 @@ jobs:
       - name: ghcr.io cleanup
         uses: dataaxiom/ghcr-cleanup-action@v1
         with:
+          keep-n-tagged: 5
           delete-untagged: true
+          delete-ghost-images: true
+          delete-partial-images: true
+          delete-orphaned-images: true
           token: ${{ secrets.GITHUB_TOKEN }}
