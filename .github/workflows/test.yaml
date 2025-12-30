@@ -42,7 +42,7 @@ jobs:
       - name: ghcr.io cleanup
         uses: dataaxiom/ghcr-cleanup-action@v1
         with:
-          keep-n-tagged: 5
+          keep-n-tagged: 10
           delete-untagged: true
           delete-ghost-images: true
           delete-partial-images: true
