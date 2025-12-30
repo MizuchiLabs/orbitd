@@ -98,6 +98,13 @@ func main() {
 				Value:   true,
 				Sources: cli.EnvVars("ORBITD_CLEANUP"),
 			},
+			&cli.BoolFlag{
+				Name:    "require-label",
+				Aliases: []string{"r"},
+				Usage:   "Only monitor containers with orbitd.enable=true label (opt-in mode)",
+				Value:   false,
+				Sources: cli.EnvVars("ORBITD_REQUIRE_LABEL"),
+			},
 		},
 	}
 

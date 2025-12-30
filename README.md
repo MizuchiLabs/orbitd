@@ -1,48 +1,110 @@
 # Orbitd 🛰️
 
-A lightweight, zero-configuration container update daemon that keeps your Docker containers automatically up-to-date.
+A lightweight container update daemon that automatically keeps your Docker containers up-to-date.
 
-Orbitd monitors your running containers and seamlessly updates them to the latest image versions while preserving all configuration, networks, volumes, and labels. Perfect for self-hosted services, homelab setups, and Docker Compose environments.
+Orbitd monitors running containers for new image versions and seamlessly recreates them with the latest digest while preserving all configuration, networks, volumes, and labels. Perfect for self-hosted services and Docker Compose setups.
 
 ## Features
 
-- **Automatic Updates** - Continuously monitors containers for new image versions
-- **Automatic Cleanup** - Optionally removes old images after successful updates
-- **Smart Detection** - Only updates when image digest actually changes
+- **Automatic Updates**: Monitors containers and updates them when new images are available
+- **Flexible Policies**: Choose between digest-only updates or semantic versioning (patch/minor/major)
+- **Label-Based Control**: Opt-in or opt-out containers using simple Docker labels
+- **Automatic Cleanup**: Optionally remove old images after successful updates
+- **Configuration Preservation**: Maintains all container settings, volumes, networks, and labels
 - **Lightweight** - Single binary with minimal resource footprint
 
 ## Quick Start
 
-### Using Docker (Recommended)
+```bash
+# Monitor all containers, check every 12 hours
+orbitd start
+
+# Opt-in mode: only update containers with orbitd.enable=true
+orbitd start --require-label
+
+# Check every 5 minutes with patch-level updates
+orbitd start --interval 5m --policy patch
+```
+
+## Update Policies
+
+Orbitd supports four update policies:
+
+- **`digest`** (default): Updates to new image digests while keeping the same tag (e.g., `nginx:latest`)
+- **`patch`**: Updates patch versions only (e.g., `1.2.3` → `1.2.4`, follows `~1.2.3`)
+- **`minor`**: Updates minor and patch versions (e.g., `1.2.3` → `1.3.0`, follows `^1.2.3`)
+- **`major`**: Updates to any newer version (e.g., `1.2.3` → `2.0.0`)
+
+Note: Semantic versioning policies (patch/minor/major) only work with tags that follow [SemVer](https://semver.org/). If a tag isn't valid SemVer, Orbitd falls back to digest-based updates.
+
+## Container Control
+
+Control which containers Orbitd monitors using the `orbitd.enable` label:
+
+### Monitor All Containers (Default)
+
+By default, Orbitd monitors all running containers except those explicitly disabled:
+
+```yaml
+services:
+  app:
+    image: myapp:latest
+    # This container will be monitored
+
+  database:
+    image: postgres:15
+    labels:
+      - "orbitd.enable=false" # Exclude from monitoring
+```
+
+### Opt-In Mode
+
+Use `--require-label` to only monitor containers explicitly enabled:
+
+```bash
+orbitd start --require-label
+```
+
+```yaml
+services:
+  app:
+    image: myapp:latest
+    labels:
+      - "orbitd.enable=true" # Only this container is monitored
+
+  database:
+    image: postgres:15
+    # This container will be ignored
+```
+
+## Installation
+
+### Docker
 
 ```bash
 docker run -d \
    --name orbitd \
    -v /var/run/docker.sock:/var/run/docker.sock \
-   -e ORBITD_POLICY=digest \
-   -e ORBITD_INTERVAL=12h \
-   -e ORBITD_CLEANUP=true \
    ghcr.io/mizuchilabs/orbitd:latest
 ```
 
-### Using Docker Compose
+### Docker Compose
 
 ```yaml
 services:
   orbitd:
     image: ghcr.io/mizuchilabs/orbitd:latest
     container_name: orbitd
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      # - ~/.docker/config.json:/root/.docker/config.json:ro # optional (for private registries)
-    environment:
-      - ORBITD_POLICY=digest
-      - ORBITD_INTERVAL=12h
-      - ORBITD_CLEANUP=true
     restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - ORBITD_INTERVAL=12h
+      - ORBITD_POLICY=digest
+      - ORBITD_CLEANUP=true
 ```
 
-### Using Binary
+### Binary
 
 Download the latest [release](https://github.com/mizuchilabs/orbitd/releases) for your platform and run with `./orbitd`
 
@@ -50,25 +112,25 @@ Download the latest [release](https://github.com/mizuchilabs/orbitd/releases) fo
 
 Orbitd can be configured via command-line flags or environment variables:
 
-| Flag         | Environment Variable | Default  | Description                                        |
-| ------------ | -------------------- | -------- | -------------------------------------------------- |
-| `--policy`   | `ORBITD_POLICY`      | `digest` | Update policy (patch, minor, major, digest)        |
-| `--interval` | `ORBITD_INTERVAL`    | `12h`    | How often to check for updates (e.g., 5m, 1h, 24h) |
-| `--cleanup`  | `ORBITD_CLEANUP`     | `true`   | Remove old images after successful updates         |
-| `--debug`    | `ORBITD_DEBUG`       | `false`  | Enable debug logging for detailed output           |
+| Flag              | Environment Variable   | Default  | Description                                             |
+| ----------------- | ---------------------- | -------- | ------------------------------------------------------- |
+| `--policy`        | `ORBITD_POLICY`        | `digest` | Update policy (patch, minor, major, digest)             |
+| `--interval`      | `ORBITD_INTERVAL`      | `12h`    | How often to check for updates (e.g., 5m, 1h, 24h)      |
+| `--cleanup`       | `ORBITD_CLEANUP`       | `true`   | Remove old images after successful updates              |
+| `--require-label` | `ORBITD_REQUIRE_LABEL` | `false`  | Require `orbitd.enable=true` label to update containers |
+| `--debug`         | `ORBITD_DEBUG`         | `false`  | Enable debug logging for detailed output                |
 
 ## How It Works
 
-1. **Discovery** - Scans all running containers on the Docker host
-2. **Update Check** - Pulls the latest version of each container's image
-3. **Digest Comparison** - Compares image digests to detect actual changes
-4. **Recreation** - If updated, stops the old container and recreates it with:
-   - Same name and configuration
-   - All environment variables preserved
-   - All volume mounts intact
-   - All network connections maintained
-   - All labels and metadata preserved
-5. **Cleanup** - Optionally removes the old image to free disk space
+1. **Discovery**: Orbitd lists all running containers (or only labeled ones in opt-in mode)
+2. **Check**: For each container, it determines the update target based on the policy
+3. **Update**: If a new version is available, it:
+   - Pulls the new image
+   - Stops the old container
+   - Creates a new container with identical configuration
+   - Starts the new container
+   - Optionally removes the old image
+4. **Repeat**: Waits for the configured interval and starts again
 
 ### Additional notes:
 

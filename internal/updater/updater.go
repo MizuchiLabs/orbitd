@@ -75,9 +75,8 @@ func (u *Updater) RunOnce(ctx context.Context) error {
 	for _, c := range containers.Items {
 		containerName := strings.Split(c.Names[0], "/")[1]
 
-		// Skip containers with disable label
-		if c.Labels["orbitd.enable"] == "false" {
-			slog.Debug("Skipping disabled container", "container", containerName)
+		// Check if container should be monitored based on labels
+		if !u.shouldMonitor(c, containerName) {
 			continue
 		}
 
@@ -88,6 +87,27 @@ func (u *Updater) RunOnce(ctx context.Context) error {
 		time.Sleep(1 * time.Second)
 	}
 	return nil
+}
+
+// shouldMonitor determines if a container should be monitored based on configuration and labels
+func (u *Updater) shouldMonitor(c dockercontainer.Summary, containerName string) bool {
+	enableLabel := c.Labels["orbitd.enable"]
+
+	if u.cfg.RequireLabel {
+		// Opt-in mode: only monitor containers explicitly enabled
+		if enableLabel != "true" {
+			slog.Debug("Skipping container (opt-in mode)", "container", containerName)
+			return false
+		}
+	} else {
+		// Default mode: monitor all except explicitly disabled
+		if enableLabel == "false" {
+			slog.Debug("Skipping disabled container", "container", containerName)
+			return false
+		}
+	}
+
+	return true
 }
 
 // updateContainer checks based on the policy if an update is available and applies it if needed.

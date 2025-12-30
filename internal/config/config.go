@@ -16,9 +16,10 @@ import (
 
 // Config holds the runtime configuration for the updater daemon.
 type Config struct {
-	Policy   string        // Update policy for semantic versioning
-	Interval time.Duration // How often to check for container updates
-	Cleanup  bool          // Whether to remove old images after updates
+	Policy       string        // Update policy for semantic versioning
+	Interval     time.Duration // How often to check for container updates
+	Cleanup      bool          // Whether to remove old images after updates
+	RequireLabel bool          // Only monitor containers with orbitd.enable=true
 }
 
 // once ensures logger initialization happens only once
