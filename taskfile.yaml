@@ -4,6 +4,7 @@ output: prefixed
 
 env:
   CGO_ENABLED: 0
+  IMAGE_PROD: ghcr.io/mizuchilabs/orbitd
 
 tasks:
   dev:
@@ -44,3 +45,9 @@ tasks:
     deps: [lint]
     cmds:
       - goreleaser release --clean --skip=validate
+
+  docker:push:
+    desc: Build and push container to registry
+    cmds:
+      - goreleaser release --clean --skip=publish,validate,sign,sbom,archive
+      - grype $IMAGE_PROD

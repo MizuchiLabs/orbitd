@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"maps"
+	"os"
 	"strings"
 	"time"
 
@@ -93,9 +94,7 @@ func (u *Updater) RunOnce(ctx context.Context) error {
 func (u *Updater) updateContainer(ctx context.Context, c dockercontainer.Summary) {
 	// Check if the image is a digest without a tag
 	if strings.HasPrefix(c.Image, "sha256:") {
-		slog.Warn("Container running with untagged digest, skipping update",
-			"container", c.Names[0],
-			"digest", c.Image)
+		slog.Warn("Container running with untagged digest, skipping update", "image", c.Image)
 		return
 	}
 
@@ -137,6 +136,12 @@ func (u *Updater) updateContainer(ctx context.Context, c dockercontainer.Summary
 		}),
 	); err != nil {
 		slog.Warn("Failed to pull image, will retry next cycle", "image", targetImage, "error", err)
+		return
+	}
+
+	// Skip self-updates
+	if u.isSelf(c) {
+		slog.Info("Self-update detected, skipping...")
 		return
 	}
 
@@ -315,4 +320,16 @@ func (u *Updater) getImageDigest(ctx context.Context, imageName string) (string,
 
 	// Fallback to ID
 	return inspect.ID, nil
+}
+
+func (u *Updater) isSelf(c dockercontainer.Summary) bool {
+	// Read our own container ID from /proc/self/cgroup or hostname
+	hostname, err := os.Hostname()
+	if err != nil {
+		return false
+	}
+
+	// Docker sets hostname to container ID by default (first 12 chars)
+	// Check if our hostname matches the container ID prefix
+	return strings.HasPrefix(c.ID, hostname)
 }
