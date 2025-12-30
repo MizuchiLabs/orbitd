@@ -1,7 +1,9 @@
 package updater
 
 import (
+	"context"
 	"strings"
+	"time"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/google/go-containerregistry/pkg/crane"
@@ -33,7 +35,10 @@ func FindUpdateTarget(currentImage string, policy UpdatePolicy) (string, error) 
 		return currentImage, nil // Not semver, fall back to digest
 	}
 
-	tags, err := crane.ListTags(repo)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	tags, err := crane.ListTags(repo, crane.WithContext(ctx))
 	if err != nil {
 		return "", err
 	}

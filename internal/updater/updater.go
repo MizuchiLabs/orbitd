@@ -34,8 +34,8 @@ func New(ctx context.Context, cfg *config.Config) error {
 		return fmt.Errorf("failed to create docker client: %w", err)
 	}
 
-	updater := &Updater{cfg: cfg, docker: cli}
 	slog.Info("Starting orbitd", "interval", cfg.Interval)
+	updater := &Updater{cfg: cfg, docker: cli}
 	return updater.Start(ctx)
 }
 
@@ -81,9 +81,7 @@ func (u *Updater) RunOnce(ctx context.Context) error {
 		}
 
 		slog.Debug("Checking container", "container", containerName)
-		if err := u.updateContainer(ctx, c); err != nil {
-			slog.Error("Failed to update container", "container", containerName, "error", err)
-		}
+		u.updateContainer(ctx, c)
 
 		// Small delay between container updates to avoid overwhelming the Docker API
 		time.Sleep(1 * time.Second)
@@ -92,7 +90,15 @@ func (u *Updater) RunOnce(ctx context.Context) error {
 }
 
 // updateContainer checks based on the policy if an update is available and applies it if needed.
-func (u *Updater) updateContainer(ctx context.Context, c dockercontainer.Summary) error {
+func (u *Updater) updateContainer(ctx context.Context, c dockercontainer.Summary) {
+	// Check if the image is a digest without a tag
+	if strings.HasPrefix(c.Image, "sha256:") {
+		slog.Warn("Container running with untagged digest, skipping update",
+			"container", c.Names[0],
+			"digest", c.Image)
+		return
+	}
+
 	policy := u.getPolicy(c.Labels)
 	targetImage := c.Image
 
@@ -100,11 +106,12 @@ func (u *Updater) updateContainer(ctx context.Context, c dockercontainer.Summary
 	if policy != PolicyDigest {
 		target, err := FindUpdateTarget(c.Image, policy)
 		if err != nil {
-			return fmt.Errorf("failed to find update target: %w", err)
+			slog.Warn("Failed to find update target, skipping", "image", c.Image, "error", err)
+			return
 		}
 		if target == "" {
 			slog.Debug("No update available", "image", c.Image, "policy", policy)
-			return nil
+			return
 		}
 		if target != c.Image {
 			slog.Info("Found update", "from", c.Image, "to", target, "policy", policy)
@@ -115,9 +122,13 @@ func (u *Updater) updateContainer(ctx context.Context, c dockercontainer.Summary
 	// Get digest before pull for comparison
 	oldDigest, _ := u.getImageDigest(ctx, targetImage)
 
+	// Pull the image with timeout protection
+	pullCtx, cancel := context.WithTimeout(ctx, 15*time.Minute)
+	defer cancel()
+
 	// Pull the image
 	if err := image.Pull(
-		ctx,
+		pullCtx,
 		targetImage,
 		image.WithPullClient(u.docker),
 		image.WithPullHandler(func(r io.ReadCloser) error {
@@ -125,50 +136,74 @@ func (u *Updater) updateContainer(ctx context.Context, c dockercontainer.Summary
 			return err
 		}),
 	); err != nil {
-		return fmt.Errorf("failed to pull image: %w", err)
+		slog.Warn("Failed to pull image, will retry next cycle", "image", targetImage, "error", err)
+		return
 	}
 
 	// Check if update is needed
 	newDigest, err := u.getImageDigest(ctx, targetImage)
 	if err != nil {
-		return fmt.Errorf("failed to get new image digest: %w", err)
+		slog.Warn("Failed to get new image digest", "image", targetImage, "error", err)
+		return
 	}
 
 	if targetImage == c.Image && oldDigest != "" && oldDigest == newDigest {
 		slog.Debug("Image already up to date", "image", targetImage)
-		return nil
+		return
 	}
 
-	return u.recreateContainer(ctx, targetImage, c.ImageID, c.ID)
+	u.recreateContainer(ctx, targetImage, c.ImageID, c.ID)
 }
 
 func (u *Updater) recreateContainer(
 	ctx context.Context,
 	imageName, oldImageID, containerID string,
-) error {
+) {
 	oldContainer, err := container.FromID(ctx, u.docker, containerID)
 	if err != nil {
-		return fmt.Errorf("failed to get container from ID: %w", err)
+		slog.Error("Failed to get container", "image", imageName, "error", err)
+		return
 	}
 	ins, err := oldContainer.Inspect(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to inspect container: %w", err)
+		slog.Error("Failed to inspect container", "image", imageName, "error", err)
+		return
 	}
+
+	containerName := strings.TrimPrefix(ins.Container.Name, "/")
 
 	if !oldContainer.IsRunning() {
-		slog.Debug("Container stopped, ignoring restart", "id", containerID)
-		return nil
+		slog.Debug("Container stopped, ignoring restart", "container", containerName)
+		return
 	}
 
-	if err := oldContainer.Terminate(ctx); err != nil {
-		return fmt.Errorf("failed to terminate container: %w", err)
+	// Stop the container but don't remove it yet (for rollback)
+	if err := oldContainer.Stop(ctx); err != nil {
+		slog.Error("Failed to stop container", "container", containerName, "error", err)
+		return
 	}
 
-	ctr, err := container.Run(
+	// Rename old container to free up the name
+	backupName := containerName + "-orbitd-old"
+	if _, err := u.docker.ContainerRename(
+		ctx,
+		containerID,
+		dockerclient.ContainerRenameOptions{NewName: backupName},
+	); err != nil {
+		slog.Error("Failed to rename old container", "container", containerName, "error", err)
+		// Try to restart old container with original name
+		if startErr := oldContainer.Start(ctx); startErr != nil {
+			slog.Error("Failed to restart container after rename failure",
+				"container", containerName, "error", startErr)
+		}
+		return
+	}
+
+	_, err = container.Run(
 		ctx,
 		container.WithClient(u.docker),
 		container.WithImage(imageName),
-		container.WithName(strings.TrimPrefix(ins.Container.Name, "/")),
+		container.WithName(containerName),
 		container.WithConfigModifier(
 			func(config *dockercontainer.Config) {
 				*config = *ins.Container.Config
@@ -187,13 +222,45 @@ func (u *Updater) recreateContainer(
 		),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to run container: %w", err)
+		slog.Error("Failed to start new container", "container", containerName, "error", err)
+
+		// Rollback: rename old container back and restart it
+		if _, renameErr := u.docker.ContainerRename(ctx, containerID, dockerclient.ContainerRenameOptions{
+			NewName: containerName,
+		}); renameErr != nil {
+			slog.Error(
+				"Failed to rename container back during rollback",
+				"container",
+				containerName,
+				"error",
+				renameErr,
+			)
+			return
+		}
+
+		if startErr := oldContainer.Start(ctx); startErr != nil {
+			slog.Error(
+				"Rollback failed, container is DOWN",
+				"container",
+				containerName,
+				"error",
+				startErr,
+			)
+			return
+		}
+
+		slog.Info("Successfully rolled back container", "container", containerName)
+		return
 	}
 
-	slog.Info("Successfully updated container", "image", ctr.Image())
+	slog.Info("Successfully updated container", "container", containerName)
+
+	// Remove old container
+	if err := oldContainer.Terminate(ctx); err != nil {
+		slog.Warn("Failed to remove old container", "container", backupName, "error", err)
+	}
 
 	u.cleanupImage(ctx, oldImageID)
-	return nil
 }
 
 func (u *Updater) cleanupImage(ctx context.Context, imageID string) {
