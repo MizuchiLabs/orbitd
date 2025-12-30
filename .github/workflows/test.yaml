@@ -38,3 +38,9 @@ jobs:
 
       - name: Run tests
         run: task lint
+
+      - name: ghcr.io cleanup
+        uses: dataaxiom/ghcr-cleanup-action@v1
+        with:
+          delete-untagged: true
+          token: ${{ secrets.GITHUB_TOKEN }}

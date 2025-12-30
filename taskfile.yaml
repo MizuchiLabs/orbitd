@@ -49,5 +49,5 @@ tasks:
   docker:push:
     desc: Build and push container to registry
     cmds:
-      - goreleaser release --clean --skip=publish,validate,sign,sbom,archive
+      - goreleaser release --clean --skip=validate,sign,sbom,archive
       - grype $IMAGE_PROD
