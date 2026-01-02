@@ -159,12 +159,6 @@ func (u *Updater) updateContainer(ctx context.Context, c dockercontainer.Summary
 		return
 	}
 
-	// Skip self-updates
-	if u.isSelf(c) {
-		slog.Info("Self-update detected, skipping...")
-		return
-	}
-
 	// Check if update is needed
 	newDigest, err := u.getImageDigest(ctx, targetImage)
 	if err != nil {
@@ -174,6 +168,12 @@ func (u *Updater) updateContainer(ctx context.Context, c dockercontainer.Summary
 
 	if targetImage == c.Image && oldDigest != "" && oldDigest == newDigest {
 		slog.Debug("Image already up to date", "image", targetImage)
+		return
+	}
+
+	// Only check for self-update when there's an actual update available
+	if u.isSelf(c) {
+		slog.Info("Self-update available, restart orbitd manually to apply")
 		return
 	}
 

@@ -7,6 +7,7 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/google/go-containerregistry/pkg/crane"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
 )
 
 type UpdatePolicy string
@@ -38,7 +39,11 @@ func FindUpdateTarget(currentImage string, policy UpdatePolicy) (string, error) 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	tags, err := crane.ListTags(repo, crane.WithContext(ctx))
+	tags, err := crane.ListTags(
+		repo,
+		crane.WithContext(ctx),
+		crane.WithTransport(remote.DefaultTransport),
+	)
 	if err != nil {
 		return "", err
 	}
