@@ -73,6 +73,11 @@ func (u *Updater) RunOnce(ctx context.Context) error {
 	}
 
 	for _, c := range containers.Items {
+		if len(c.Names) == 0 {
+			slog.Warn("Container has no names, skipping", "id", c.ID)
+			continue
+		}
+
 		containerName := strings.Split(c.Names[0], "/")[1]
 
 		// Check if container should be monitored based on labels
@@ -123,7 +128,7 @@ func (u *Updater) updateContainer(ctx context.Context, c dockercontainer.Summary
 
 	// For semver policies, find the target version
 	if policy != PolicyDigest {
-		target, err := FindUpdateTarget(c.Image, policy)
+		target, err := FindUpdateTarget(ctx, c.Image, policy)
 		if err != nil {
 			slog.Warn("Failed to find update target, skipping", "image", c.Image, "error", err)
 			return
@@ -346,6 +351,7 @@ func (u *Updater) isSelf(c dockercontainer.Summary) bool {
 	// Read our own container ID from /proc/self/cgroup or hostname
 	hostname, err := os.Hostname()
 	if err != nil {
+		slog.Warn("Failed to get hostname", "error", err)
 		return false
 	}
 

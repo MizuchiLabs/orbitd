@@ -2,11 +2,12 @@ package updater
 
 import (
 	"context"
-	"strings"
+	"fmt"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/google/go-containerregistry/pkg/crane"
+	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 )
 
@@ -20,81 +21,102 @@ const (
 )
 
 // FindUpdateTarget returns the best available tag given a policy.
-// Returns empty string if no update is available.
-func FindUpdateTarget(currentImage string, policy UpdatePolicy) (string, error) {
-	if !policy.IsValid() {
-		policy = PolicyDigest
-	}
-
-	if policy == PolicyDigest {
+func FindUpdateTarget(
+	ctx context.Context,
+	currentImage string,
+	policy UpdatePolicy,
+) (string, error) {
+	if !policy.IsValid() || policy == PolicyDigest {
 		return currentImage, nil // Just re-pull same tag
 	}
 
-	repo, tag := parseImage(currentImage)
+	repo, tag, err := parseImage(currentImage)
+	if err != nil {
+		return "", err
+	}
+	if tag == "" {
+		return currentImage, nil // digest reference or tagless reference -> can't semver match
+	}
+
 	currentVer, err := semver.NewVersion(tag)
 	if err != nil {
 		return currentImage, nil // Not semver, fall back to digest
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	listCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	tags, err := crane.ListTags(
 		repo,
-		crane.WithContext(ctx),
+		crane.WithContext(listCtx),
 		crane.WithTransport(remote.DefaultTransport),
 	)
 	if err != nil {
 		return "", err
 	}
 
-	constraint := buildConstraint(currentVer, policy)
-	return findBestVersion(repo, tags, currentVer, constraint)
-}
-
-func buildConstraint(current *semver.Version, policy UpdatePolicy) *semver.Constraints {
-	var c string
-	switch policy {
-	case PolicyPatch:
-		c = "~" + current.String()
-	case PolicyMinor:
-		c = "^" + current.String()
-	case PolicyMajor:
-		c = ">= " + current.String()
-	}
-	constraint, _ := semver.NewConstraint(c)
-	return constraint
+	return findBestVersion(repo, tags, currentVer, policy)
 }
 
 func findBestVersion(
 	repo string,
 	tags []string,
 	current *semver.Version,
-	constraint *semver.Constraints,
+	policy UpdatePolicy,
 ) (string, error) {
+	constraint, err := buildConstraint(current, policy)
+	if err != nil {
+		return "", err
+	}
+
 	var best *semver.Version
 	for _, tag := range tags {
 		v, err := semver.NewVersion(tag)
 		if err != nil {
-			continue // Skip non-semver tags
+			continue
 		}
-		if constraint.Check(v) && v.GreaterThan(current) {
-			if best == nil || v.GreaterThan(best) {
-				best = v
-			}
+		if !constraint.Check(v) {
+			continue
+		}
+		if best == nil || v.GreaterThan(best) {
+			best = v
 		}
 	}
+
 	if best == nil {
 		return "", nil
 	}
 	return repo + ":" + best.String(), nil
 }
 
-func parseImage(image string) (repo, tag string) {
-	if i := strings.LastIndex(image, ":"); i != -1 {
-		return image[:i], image[i+1:]
+func buildConstraint(current *semver.Version, policy UpdatePolicy) (*semver.Constraints, error) {
+	switch policy {
+	case PolicyPatch:
+		return semver.NewConstraint(fmt.Sprintf("~%s, > %s", current.String(), current.String()))
+	case PolicyMinor:
+		return semver.NewConstraint(fmt.Sprintf("^%s, > %s", current.String(), current.String()))
+	case PolicyMajor:
+		return semver.NewConstraint("> " + current.String())
+	default:
+		return semver.NewConstraint("> " + current.String())
 	}
-	return image, "latest"
+}
+
+func parseImage(image string) (repo, tag string, err error) {
+	ref, err := name.ParseReference(image, name.WeakValidation)
+	if err != nil {
+		return "", "", err
+	}
+
+	// repo should be without tag/digest
+	repo = ref.Context().String()
+
+	if t, ok := ref.(name.Tag); ok {
+		return repo, t.TagStr(), nil
+	}
+
+	// Digest or tagless reference
+	return repo, "", nil
 }
 
 func (p UpdatePolicy) IsValid() bool {
