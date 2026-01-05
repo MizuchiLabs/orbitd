@@ -85,7 +85,7 @@ func (u *Updater) RunOnce(ctx context.Context) error {
 			continue
 		}
 
-		slog.Debug("Checking container", "container", containerName)
+		slog.Debug("Checking", "container", containerName)
 		u.updateContainer(ctx, c)
 
 		// Small delay between container updates to avoid overwhelming the Docker API
@@ -107,7 +107,7 @@ func (u *Updater) shouldMonitor(c dockercontainer.Summary, containerName string)
 	} else {
 		// Default mode: monitor all except explicitly disabled
 		if enableLabel == "false" {
-			slog.Debug("Skipping disabled container", "container", containerName)
+			slog.Debug("Skipping disabled", "container", containerName)
 			return false
 		}
 	}
@@ -209,7 +209,7 @@ func (u *Updater) recreateContainer(
 
 	// Stop the container but don't remove it yet (for rollback)
 	if err := oldContainer.Stop(ctx); err != nil {
-		slog.Error("Failed to stop container", "container", containerName, "error", err)
+		slog.Error("Failed to stop", "container", containerName, "error", err)
 		return
 	}
 
@@ -220,7 +220,7 @@ func (u *Updater) recreateContainer(
 		containerID,
 		dockerclient.ContainerRenameOptions{NewName: backupName},
 	); err != nil {
-		slog.Error("Failed to rename old container", "container", containerName, "error", err)
+		slog.Error("Failed to rename", "container", containerName, "error", err)
 		// Try to restart old container with original name
 		if startErr := oldContainer.Start(ctx); startErr != nil {
 			slog.Error("Failed to restart container after rename failure",
@@ -252,7 +252,7 @@ func (u *Updater) recreateContainer(
 		),
 	)
 	if err != nil {
-		slog.Error("Failed to start new container", "container", containerName, "error", err)
+		slog.Error("Failed to start", "container", containerName, "error", err)
 
 		// Rollback: rename old container back and restart it
 		if _, renameErr := u.docker.ContainerRename(ctx, containerID, dockerclient.ContainerRenameOptions{
@@ -279,15 +279,15 @@ func (u *Updater) recreateContainer(
 			return
 		}
 
-		slog.Info("Successfully rolled back container", "container", containerName)
+		slog.Info("Successfully rolled back", "container", containerName)
 		return
 	}
 
-	slog.Info("Successfully updated container", "container", containerName)
+	slog.Info("Successfully updated", "container", containerName)
 
 	// Remove old container
 	if err := oldContainer.Terminate(ctx); err != nil {
-		slog.Warn("Failed to remove old container", "container", backupName, "error", err)
+		slog.Warn("Failed to remove", "container", backupName, "error", err)
 	}
 
 	u.cleanupImage(ctx, oldImageID)
