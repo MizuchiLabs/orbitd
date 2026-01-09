@@ -85,6 +85,8 @@ services:
     # This container will be ignored
 ```
 
+> Note: You can set per container update policy by adding a label e.g. `orbitd.policy=patch` to it.
+
 ## Installation
 
 ### Docker
@@ -127,25 +129,6 @@ Orbitd can be configured via command-line flags or environment variables:
 | `--cleanup`       | `ORBITD_CLEANUP`       | `true`   | Remove old images after successful updates              |
 | `--require-label` | `ORBITD_REQUIRE_LABEL` | `false`  | Require `orbitd.enable=true` label to update containers |
 | `--debug`         | `ORBITD_DEBUG`         | `false`  | Enable debug logging for detailed output                |
-
-## How It Works
-
-1. **Discovery**: Orbitd lists all running containers (or only labeled ones in opt-in mode)
-2. **Check**: For each container, it determines the update target based on the policy
-3. **Update**: If a new version is available, it:
-   - Pulls the new image
-   - Stops the old container
-   - Creates a new container with identical configuration
-   - Starts the new container
-   - Optionally removes the old image
-4. **Repeat**: Waits for the configured interval and starts again
-
-### Additional notes:
-
-> - Only updates containers that are currently running, stopped containers are left untouched.
-> - Updates only when image digest actually changes.
-> - By default watches all containers, you can disable watching a container by adding a label `orbitd.enable=false` to it.
-> - You can set per container update policy by adding a label e.g. `orbitd.policy=patch` to it.
 
 ## License
 
