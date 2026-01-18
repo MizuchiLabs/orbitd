@@ -21,14 +21,12 @@ import (
 	dockerclient "github.com/moby/moby/client"
 )
 
-// Updater manages the container update process.
 type Updater struct {
 	cfg    *config.Config
 	docker client.SDKClient
 }
 
 // New creates a new Updater instance and starts the update daemon.
-// It establishes a connection to the Docker daemon and begins monitoring containers.
 func New(ctx context.Context, cfg *config.Config) error {
 	cli, err := client.New(ctx)
 	if err != nil {
@@ -41,13 +39,10 @@ func New(ctx context.Context, cfg *config.Config) error {
 }
 
 // Start begins the update daemon's main loop, checking for updates at the configured interval.
-// It runs an immediate check on startup, then continues on the ticker schedule.
-// The function blocks until the context is cancelled.
 func (u *Updater) Start(ctx context.Context) error {
 	ticker := time.NewTicker(u.cfg.Interval)
 	defer ticker.Stop()
 
-	// Run immediately on start
 	if err := u.RunOnce(ctx); err != nil {
 		slog.Error("Error during update check", "error", err)
 	}
@@ -65,7 +60,6 @@ func (u *Updater) Start(ctx context.Context) error {
 }
 
 // RunOnce performs a single check and update cycle for all running containers.
-// It iterates through all containers, checking each for available updates.
 func (u *Updater) RunOnce(ctx context.Context) error {
 	containers, err := u.docker.ContainerList(ctx, dockerclient.ContainerListOptions{})
 	if err != nil {
@@ -88,8 +82,7 @@ func (u *Updater) RunOnce(ctx context.Context) error {
 		slog.Debug("Checking", "container", containerName)
 		u.updateContainer(ctx, c)
 
-		// Small delay between container updates to avoid overwhelming the Docker API
-		time.Sleep(1 * time.Second)
+		time.Sleep(1 * time.Second) // Slow down to avoid rate limits
 	}
 	return nil
 }
@@ -117,9 +110,8 @@ func (u *Updater) shouldMonitor(c dockercontainer.Summary, containerName string)
 
 // updateContainer checks based on the policy if an update is available and applies it if needed.
 func (u *Updater) updateContainer(ctx context.Context, c dockercontainer.Summary) {
-	// Check if the image is a digest without a tag
 	if strings.HasPrefix(c.Image, "sha256:") {
-		slog.Warn("Container running with untagged digest, skipping update", "image", c.Image)
+		slog.Debug("Container running with untagged digest, skipping update", "image", c.Image)
 		return
 	}
 
@@ -298,6 +290,27 @@ func (u *Updater) cleanupImage(ctx context.Context, imageID string) {
 		return
 	}
 
+	// Check if any other containers are using this image
+	containers, err := u.docker.ContainerList(ctx, dockerclient.ContainerListOptions{
+		All:     true,
+		Filters: dockerclient.Filters{}.Add("ancestor", imageID),
+	})
+	if err != nil {
+		slog.Warn("Failed to list containers before cleanup", "error", err)
+		return
+	}
+
+	if len(containers.Items) > 0 {
+		slog.Debug(
+			"Image still in use by another container, skipping cleanup",
+			"image",
+			imageID,
+			"containers",
+			len(containers.Items),
+		)
+		return
+	}
+
 	res, err := image.Remove(
 		ctx,
 		imageID,
@@ -331,7 +344,6 @@ func (u *Updater) getPolicy(labels map[string]string) UpdatePolicy {
 }
 
 // getImageDigest retrieves the digest or ID of an image for comparison.
-// It prefers RepoDigests for registry-tracked images, falling back to the local ID.
 func (u *Updater) getImageDigest(ctx context.Context, imageName string) (string, error) {
 	inspect, err := u.docker.ImageInspect(ctx, imageName)
 	if err != nil {
