@@ -89,17 +89,17 @@ func (u *Updater) RunOnce(ctx context.Context) error {
 
 // shouldMonitor determines if a container should be monitored based on configuration and labels
 func (u *Updater) shouldMonitor(c dockercontainer.Summary, containerName string) bool {
-	enableLabel := c.Labels["orbitd.enable"]
+	label := c.Labels["orbitd.enable"]
 
 	if u.cfg.RequireLabel {
 		// Opt-in mode: only monitor containers explicitly enabled
-		if enableLabel != "true" {
+		if label != "true" {
 			slog.Debug("Skipping container (opt-in mode)", "container", containerName)
 			return false
 		}
 	} else {
 		// Default mode: monitor all except explicitly disabled
-		if enableLabel == "false" {
+		if label == "false" {
 			slog.Debug("Skipping disabled", "container", containerName)
 			return false
 		}
@@ -174,12 +174,12 @@ func (u *Updater) updateContainer(ctx context.Context, c dockercontainer.Summary
 		return
 	}
 
-	u.recreateContainer(ctx, targetImage, c.ImageID, c.ID)
+	u.recreateContainer(ctx, targetImage, c.Image, c.ID)
 }
 
 func (u *Updater) recreateContainer(
 	ctx context.Context,
-	imageName, oldImageID, containerID string,
+	imageName, oldImageRef, containerID string,
 ) {
 	oldContainer, err := container.FromID(ctx, u.docker, containerID)
 	if err != nil {
@@ -282,38 +282,22 @@ func (u *Updater) recreateContainer(
 		slog.Warn("Failed to remove", "container", backupName, "error", err)
 	}
 
-	u.cleanupImage(ctx, oldImageID)
+	u.cleanupImage(ctx, imageName, oldImageRef)
 }
 
-func (u *Updater) cleanupImage(ctx context.Context, imageID string) {
+func (u *Updater) cleanupImage(ctx context.Context, newImageRef, oldImageRef string) {
 	if !u.cfg.Cleanup {
 		return
 	}
 
-	// Check if any other containers are using this image
-	containers, err := u.docker.ContainerList(ctx, dockerclient.ContainerListOptions{
-		All:     true,
-		Filters: dockerclient.Filters{}.Add("ancestor", imageID),
-	})
-	if err != nil {
-		slog.Warn("Failed to list containers before cleanup", "error", err)
-		return
-	}
-
-	if len(containers.Items) > 0 {
-		slog.Debug(
-			"Image still in use by another container, skipping cleanup",
-			"image",
-			imageID,
-			"containers",
-			len(containers.Items),
-		)
+	// If old and new reference are the same, nothing to clean up
+	if oldImageRef == newImageRef {
 		return
 	}
 
 	res, err := image.Remove(
 		ctx,
-		imageID,
+		oldImageRef,
 		image.WithRemoveOptions(dockerclient.ImageRemoveOptions{
 			Force:         false,
 			PruneChildren: true,

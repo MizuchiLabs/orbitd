@@ -70,6 +70,7 @@ func findBestVersion(
 	}
 
 	var best *semver.Version
+	var pullTag string
 	for _, tag := range tags {
 		v, err := semver.NewVersion(tag)
 		if err != nil {
@@ -80,13 +81,14 @@ func findBestVersion(
 		}
 		if best == nil || v.GreaterThan(best) {
 			best = v
+			pullTag = tag
 		}
 	}
 
 	if best == nil {
 		return "", nil
 	}
-	return repo + ":" + best.String(), nil
+	return repo + ":" + pullTag, nil
 }
 
 func buildConstraint(current *semver.Version, policy UpdatePolicy) (*semver.Constraints, error) {
