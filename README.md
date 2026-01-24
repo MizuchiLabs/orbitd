@@ -27,6 +27,7 @@ Orbitd monitors your containers and automatically updates them when new images a
 services:
   orbitd:
     image: ghcr.io/mizuchilabs/orbitd:latest
+    container_name: orbitd
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
