@@ -26,7 +26,6 @@ type Updater struct {
 	docker client.SDKClient
 }
 
-// New creates a new Updater instance and starts the update daemon.
 func New(ctx context.Context, cfg *config.Config) error {
 	cli, err := client.New(ctx)
 	if err != nil {
@@ -35,15 +34,21 @@ func New(ctx context.Context, cfg *config.Config) error {
 
 	slog.Info("Starting orbitd", "interval", cfg.Interval)
 	updater := &Updater{cfg: cfg, docker: cli}
+
+	// Handle shutdown
+	go func() {
+		<-ctx.Done()
+		slog.Info("Shutting down orbitd")
+		_ = cli.Close()
+	}()
 	return updater.Start(ctx)
 }
 
-// Start begins the update daemon's main loop, checking for updates at the configured interval.
 func (u *Updater) Start(ctx context.Context) error {
 	ticker := time.NewTicker(u.cfg.Interval)
 	defer ticker.Stop()
 
-	if err := u.RunOnce(ctx); err != nil {
+	if err := u.check(ctx); err != nil {
 		slog.Error("Error during update check", "error", err)
 	}
 
@@ -52,15 +57,14 @@ func (u *Updater) Start(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			if err := u.RunOnce(ctx); err != nil {
+			if err := u.check(ctx); err != nil {
 				slog.Error("Error during update check", "error", err)
 			}
 		}
 	}
 }
 
-// RunOnce performs a single check and update cycle for all running containers.
-func (u *Updater) RunOnce(ctx context.Context) error {
+func (u *Updater) check(ctx context.Context) error {
 	containers, err := u.docker.ContainerList(ctx, dockerclient.ContainerListOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to list containers: %w", err)
@@ -71,24 +75,16 @@ func (u *Updater) RunOnce(ctx context.Context) error {
 			slog.Warn("Container has no names, skipping", "id", c.ID)
 			continue
 		}
+		containerName := strings.TrimPrefix(c.Names[0], "/")
 
-		containerName := strings.Split(c.Names[0], "/")[1]
-
-		// Check if container should be monitored based on labels
-		if !u.shouldMonitor(c, containerName) {
-			continue
+		if u.isEnabled(c, containerName) {
+			u.update(ctx, c)
 		}
-
-		slog.Debug("Checking", "container", containerName)
-		u.updateContainer(ctx, c)
-
-		time.Sleep(1 * time.Second) // Slow down to avoid rate limits
 	}
 	return nil
 }
 
-// shouldMonitor determines if a container should be monitored based on configuration and labels
-func (u *Updater) shouldMonitor(c dockercontainer.Summary, containerName string) bool {
+func (u *Updater) isEnabled(c dockercontainer.Summary, containerName string) bool {
 	label := c.Labels["orbitd.enable"]
 
 	if u.cfg.RequireLabel {
@@ -104,12 +100,10 @@ func (u *Updater) shouldMonitor(c dockercontainer.Summary, containerName string)
 			return false
 		}
 	}
-
 	return true
 }
 
-// updateContainer checks based on the policy if an update is available and applies it if needed.
-func (u *Updater) updateContainer(ctx context.Context, c dockercontainer.Summary) {
+func (u *Updater) update(ctx context.Context, c dockercontainer.Summary) {
 	if strings.HasPrefix(c.Image, "sha256:") {
 		slog.Debug("Container running with untagged digest, skipping update", "image", c.Image)
 		return
@@ -119,7 +113,7 @@ func (u *Updater) updateContainer(ctx context.Context, c dockercontainer.Summary
 	targetImage := c.Image
 
 	// For semver policies, find the target version
-	if policy != PolicyDigest {
+	if policy.IsValid() && policy != PolicyDigest {
 		target, err := FindUpdateTarget(ctx, c.Image, policy)
 		if err != nil {
 			slog.Warn("Failed to find update target, skipping", "image", c.Image, "error", err)
@@ -138,11 +132,9 @@ func (u *Updater) updateContainer(ctx context.Context, c dockercontainer.Summary
 	// Get digest before pull for comparison
 	oldDigest, _ := u.getImageDigest(ctx, targetImage)
 
-	// Pull the image with timeout protection
 	pullCtx, cancel := context.WithTimeout(ctx, 15*time.Minute)
 	defer cancel()
 
-	// Pull the image
 	if err := image.Pull(
 		pullCtx,
 		targetImage,
@@ -156,7 +148,7 @@ func (u *Updater) updateContainer(ctx context.Context, c dockercontainer.Summary
 		return
 	}
 
-	// Check if update is needed
+	// for digest comparisons
 	newDigest, err := u.getImageDigest(ctx, targetImage)
 	if err != nil {
 		slog.Warn("Failed to get new image digest", "image", targetImage, "error", err)
@@ -174,10 +166,10 @@ func (u *Updater) updateContainer(ctx context.Context, c dockercontainer.Summary
 		return
 	}
 
-	u.recreateContainer(ctx, targetImage, c.Image, c.ID)
+	u.recreate(ctx, targetImage, c.Image, c.ID)
 }
 
-func (u *Updater) recreateContainer(
+func (u *Updater) recreate(
 	ctx context.Context,
 	imageName, oldImageRef, containerID string,
 ) {
@@ -221,7 +213,7 @@ func (u *Updater) recreateContainer(
 		return
 	}
 
-	_, err = container.Run(
+	if _, err = container.Run(
 		ctx,
 		container.WithClient(u.docker),
 		container.WithImage(imageName),
@@ -242,8 +234,7 @@ func (u *Updater) recreateContainer(
 				maps.Copy(endpointsConfig, ins.Container.NetworkSettings.Networks)
 			},
 		),
-	)
-	if err != nil {
+	); err != nil {
 		slog.Error("Failed to start", "container", containerName, "error", err)
 
 		// Rollback: rename old container back and restart it
@@ -286,12 +277,7 @@ func (u *Updater) recreateContainer(
 }
 
 func (u *Updater) cleanupImage(ctx context.Context, newImageRef, oldImageRef string) {
-	if !u.cfg.Cleanup {
-		return
-	}
-
-	// If old and new reference are the same, nothing to clean up
-	if oldImageRef == newImageRef {
+	if !u.cfg.Cleanup || (oldImageRef == newImageRef) {
 		return
 	}
 
@@ -319,7 +305,6 @@ func (u *Updater) cleanupImage(ctx context.Context, newImageRef, oldImageRef str
 	}
 }
 
-// getPolicy returns the update policy for a container, falling back to the global policy if not set.
 func (u *Updater) getPolicy(labels map[string]string) UpdatePolicy {
 	if p, ok := labels["orbitd.policy"]; ok {
 		return UpdatePolicy(p)
@@ -327,25 +312,21 @@ func (u *Updater) getPolicy(labels map[string]string) UpdatePolicy {
 	return UpdatePolicy(u.cfg.Policy)
 }
 
-// getImageDigest retrieves the digest or ID of an image for comparison.
 func (u *Updater) getImageDigest(ctx context.Context, imageName string) (string, error) {
 	inspect, err := u.docker.ImageInspect(ctx, imageName)
 	if err != nil {
 		return "", err
 	}
 
-	// Use RepoDigests if available (more reliable for updates)
+	// Use RepoDigests if available
 	if len(inspect.RepoDigests) > 0 {
 		return inspect.RepoDigests[0], nil
 	}
-
-	// Fallback to ID
 	return inspect.ID, nil
 }
 
 func (u *Updater) isSelf(c dockercontainer.Summary) bool {
-	// Read our own container ID from /proc/self/cgroup or hostname
-	hostname, err := os.Hostname()
+	hostname, err := os.Hostname() // container ID
 	if err != nil {
 		slog.Warn("Failed to get hostname", "error", err)
 		return false
