@@ -161,7 +161,7 @@ func (u *Updater) update(ctx context.Context, c dockercontainer.Summary) {
 	}
 
 	// Only check for self-update when there's an actual update available
-	if u.isSelf(c) {
+	if isSelf(c) {
 		slog.Info("Self-update available, restart orbitd manually to apply")
 		return
 	}
@@ -325,7 +325,7 @@ func (u *Updater) getImageDigest(ctx context.Context, imageName string) (string,
 	return inspect.ID, nil
 }
 
-func (u *Updater) isSelf(c dockercontainer.Summary) bool {
+func isSelf(c dockercontainer.Summary) bool {
 	hostname, err := os.Hostname() // container ID
 	if err != nil {
 		slog.Warn("Failed to get hostname", "error", err)
