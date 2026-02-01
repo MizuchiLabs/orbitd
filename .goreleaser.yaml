@@ -95,26 +95,30 @@ changelog:
   sort: asc
   filters:
     include:
-      - "^feat:"
-      - "^fix:"
-      - "^sec:"
-      - "^perf:"
-      - "^docs:"
+      - '^feat(\(.+\))?!?:'
+      - '^fix(\(.+\))?!?:'
+      - '^sec(\(.+\))?!?:'
+      - '^perf(\(.+\))?!?:'
+      - '^refactor(\(.+\))?!?:'
+      - '^docs(\(.+\))?!?:'
   groups:
     - title: Features
-      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      regexp: '^feat(\(.+\))?!?:'
       order: 0
     - title: Security
-      regexp: '^.*?sec(\([[:word:]]+\))??!?:.+$'
+      regexp: '^sec(\(.+\))?!?:'
       order: 1
-    - title: Bug fixes
-      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+    - title: Bug Fixes
+      regexp: '^fix(\(.+\))?!?:'
       order: 2
     - title: Performance
-      regexp: '^.*?perf(\([[:word:]]+\))??!?:.+$'
+      regexp: '^perf(\(.+\))?!?:'
       order: 3
-    - title: Documentation
-      regexp: '^.*?docs(\([[:word:]]+\))??!?:.+$'
+    - title: Refactor
+      regexp: '^refactor(\(.+\))?!?:'
       order: 4
+    - title: Documentation
+      regexp: '^docs(\(.+\))?!?:'
+      order: 5
     - title: Other
       order: 999
