@@ -60,7 +60,6 @@ func main() {
 				Usage:   "Start the orbitd daemon to monitor and update containers",
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					cfg := config.Load(cmd)
-
 					return updater.New(ctx, cfg)
 				},
 			},

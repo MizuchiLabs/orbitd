@@ -13,7 +13,6 @@ before:
 
 builds:
   - binary: orbitd
-    dir: cmd
     env: [CGO_ENABLED=0]
     ldflags:
       - -s -w

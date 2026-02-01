@@ -7,12 +7,6 @@ env:
   IMAGE_PROD: ghcr.io/mizuchilabs/orbitd
 
 tasks:
-  dev:
-    desc: Run command in dev mode
-    cmds:
-      - go run cmd/main.go
-    silent: false
-
   # 󰚰 Update deps
   update:
     desc: Update dependencies
@@ -23,7 +17,7 @@ tasks:
   build:
     desc: Build binary
     cmds:
-      - go build -ldflags="-s -w" -trimpath -o bin/orbitd ./cmd/main.go
+      - go build -ldflags="-s -w" -trimpath -o bin/orbitd
 
   # 󰉠  Lint / static checks
   lint:
