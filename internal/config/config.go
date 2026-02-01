@@ -4,7 +4,6 @@ package config
 import (
 	"log/slog"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/lmittmann/tint"
@@ -20,23 +19,14 @@ type Config struct {
 	RequireLabel bool          // Only monitor containers with orbitd.enable=true
 }
 
-var once sync.Once
-
 func Load(cmd *cli.Command) *Config {
-	cfg := &Config{}
-
-	once.Do(func() {
-		if cmd == nil {
-			return
-		}
-
-		initLogger(cmd)
-		cfg.Policy = cmd.String("policy")
-		cfg.Interval = cmd.Duration("interval")
-		cfg.Cleanup = cmd.Bool("cleanup")
-		cfg.RequireLabel = cmd.Bool("require-label")
-	})
-	return cfg
+	initLogger(cmd)
+	return &Config{
+		Policy:       cmd.String("policy"),
+		Interval:     cmd.Duration("interval"),
+		Cleanup:      cmd.Bool("cleanup"),
+		RequireLabel: cmd.Bool("require-label"),
+	}
 }
 
 func initLogger(cmd *cli.Command) {

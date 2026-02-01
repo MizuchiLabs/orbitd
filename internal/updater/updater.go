@@ -15,6 +15,7 @@ import (
 	"github.com/docker/go-sdk/client"
 	"github.com/docker/go-sdk/container"
 	"github.com/docker/go-sdk/image"
+	"github.com/docker/go-units"
 	"github.com/mizuchilabs/orbitd/internal/config"
 	dockercontainer "github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
@@ -166,13 +167,10 @@ func (u *Updater) update(ctx context.Context, c dockercontainer.Summary) {
 		return
 	}
 
-	u.recreate(ctx, targetImage, c.Image, c.ID)
+	u.recreate(ctx, targetImage, c.ID)
 }
 
-func (u *Updater) recreate(
-	ctx context.Context,
-	imageName, oldImageRef, containerID string,
-) {
+func (u *Updater) recreate(ctx context.Context, imageName, containerID string) {
 	oldContainer, err := container.FromID(ctx, u.docker, containerID)
 	if err != nil {
 		slog.Error("Failed to get container", "image", imageName, "error", err)
@@ -273,35 +271,28 @@ func (u *Updater) recreate(
 		slog.Warn("Failed to remove", "container", backupName, "error", err)
 	}
 
-	u.cleanupImage(ctx, imageName, oldImageRef)
+	u.pruneImages(ctx)
 }
 
-func (u *Updater) cleanupImage(ctx context.Context, newImageRef, oldImageRef string) {
-	if !u.cfg.Cleanup || (oldImageRef == newImageRef) {
+func (u *Updater) pruneImages(ctx context.Context) {
+	if !u.cfg.Cleanup {
 		return
 	}
 
-	res, err := image.Remove(
-		ctx,
-		oldImageRef,
-		image.WithRemoveOptions(dockerclient.ImageRemoveOptions{
-			Force:         false,
-			PruneChildren: true,
-		}),
-	)
+	res, err := u.docker.ImagePrune(ctx, dockerclient.ImagePruneOptions{
+		Filters: dockerclient.Filters{}.Add("dangling", "true"),
+	})
 	if err != nil {
-		slog.Warn("Failed to remove image", "error", err)
+		slog.Warn("Failed to prune images", "error", err)
 		return
 	}
 
-	// Only log actually deleted/untagged images
-	for _, r := range res.Items {
-		if r.Deleted != "" {
-			slog.Debug("Removed image", "id", r.Deleted)
-		}
-		if r.Untagged != "" {
-			slog.Debug("Untagged image", "id", r.Untagged)
-		}
+	if len(res.Report.ImagesDeleted) > 0 {
+		slog.Debug(
+			"Pruned dangling images",
+			"count", len(res.Report.ImagesDeleted),
+			"space_reclaimed", units.HumanSize(float64(res.Report.SpaceReclaimed)),
+		)
 	}
 }
 
