@@ -43,7 +43,7 @@ upx:
 
 kos:
   - base_image: alpine
-    repositories: ["ghcr.io/mizuchilabs/{{ .ProjectName }}"]
+    repositories: [ghcr.io/mizuchilabs/orbitd]
     bare: true
     preserve_import_paths: false
     sbom: none
