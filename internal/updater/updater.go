@@ -288,7 +288,7 @@ func (u *Updater) pruneImages(ctx context.Context) {
 	}
 
 	if len(res.Report.ImagesDeleted) > 0 {
-		slog.Debug(
+		slog.Info(
 			"Pruned dangling images",
 			"count", len(res.Report.ImagesDeleted),
 			"space_reclaimed", units.HumanSize(float64(res.Report.SpaceReclaimed)),
