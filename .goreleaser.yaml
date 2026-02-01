@@ -95,12 +95,12 @@ changelog:
   sort: asc
   filters:
     include:
-      - '^feat(\(.+\))?!?:'
-      - '^fix(\(.+\))?!?:'
-      - '^sec(\(.+\))?!?:'
-      - '^perf(\(.+\))?!?:'
-      - '^refactor(\(.+\))?!?:'
-      - '^docs(\(.+\))?!?:'
+      - "^feat"
+      - "^fix"
+      - "^sec"
+      - "^perf"
+      - "^refactor"
+      - "^docs"
   groups:
     - title: Features
       regexp: '^feat(\(.+\))?!?:'
