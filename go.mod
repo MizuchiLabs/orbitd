@@ -7,8 +7,9 @@ require (
 	github.com/docker/go-sdk/client v0.1.0-alpha012
 	github.com/docker/go-sdk/container v0.1.0-alpha013
 	github.com/docker/go-sdk/image v0.1.0-alpha013
+	github.com/docker/go-units v0.5.0
 	github.com/google/go-containerregistry v0.20.7
-	github.com/lmittmann/tint v1.1.2
+	github.com/lmittmann/tint v1.1.3
 	github.com/mattn/go-colorable v0.1.14
 	github.com/mattn/go-isatty v0.0.20
 	github.com/moby/moby/api v1.53.0
@@ -37,7 +38,6 @@ require (
 	github.com/docker/go-sdk/config v0.1.0-alpha012 // indirect
 	github.com/docker/go-sdk/context v0.1.0-alpha012 // indirect
 	github.com/docker/go-sdk/network v0.1.0-alpha012 // indirect
-	github.com/docker/go-units v0.5.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
