@@ -4,14 +4,7 @@
   "packageRules": [
     {
       "matchPackagePatterns": ["*"],
-      "matchUpdateTypes": ["minor", "patch", "digest", "pinDigest", "bump"],
-      "groupName": "non-major dependencies",
       "automerge": true
-    },
-    {
-      "matchPackagePatterns": ["*"],
-      "matchUpdateTypes": ["major"],
-      "automerge": false
     }
   ],
   "platformAutomerge": true,
