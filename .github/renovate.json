@@ -6,8 +6,7 @@
       "matchPackagePatterns": ["*"],
       "matchUpdateTypes": ["minor", "patch", "digest", "pinDigest", "bump"],
       "groupName": "non-major dependencies",
-      "automerge": true,
-      "automergeType": "branch"
+      "automerge": true
     },
     {
       "matchPackagePatterns": ["*"],
