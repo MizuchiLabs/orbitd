@@ -1,5 +1,5 @@
-// Package updater provides container update functionality by monitoring Docker
-// containers and automatically updating them to the latest image versions.
+// Package updater periodically checks running containers and recreates them
+// when newer images are available.
 package updater
 
 import (
@@ -17,6 +17,7 @@ import (
 	"github.com/docker/go-sdk/image"
 	"github.com/docker/go-units"
 	"github.com/mizuchilabs/orbitd/internal/config"
+	"github.com/mizuchilabs/orbitd/internal/policy"
 	dockercontainer "github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	dockerclient "github.com/moby/moby/client"
@@ -110,22 +111,27 @@ func (u *Updater) update(ctx context.Context, c dockercontainer.Summary) {
 		return
 	}
 
-	policy := u.getPolicy(c.Labels)
 	targetImage := c.Image
+	updatePolicy := u.cfg.Policy
+
+	// Policy can be overridden by container label
+	if raw, ok := c.Labels["orbitd.policy"]; ok {
+		updatePolicy = policy.ParseOr(raw, u.cfg.Policy)
+	}
 
 	// For semver policies, find the target version
-	if policy.IsValid() && policy != PolicyDigest {
-		target, err := FindUpdateTarget(ctx, c.Image, policy)
+	if updatePolicy != policy.Digest {
+		target, err := policy.FindUpdateTarget(ctx, c.Image, updatePolicy)
 		if err != nil {
 			slog.Warn("Failed to find update target, skipping", "image", c.Image, "error", err)
 			return
 		}
 		if target == "" {
-			slog.Debug("No update available", "image", c.Image, "policy", policy)
+			slog.Debug("No update available", "image", c.Image, "policy", updatePolicy)
 			return
 		}
 		if target != c.Image {
-			slog.Info("Found update", "from", c.Image, "to", target, "policy", policy)
+			slog.Info("Found update", "from", c.Image, "to", target, "policy", updatePolicy)
 			targetImage = target
 		}
 	}
@@ -294,13 +300,6 @@ func (u *Updater) pruneImages(ctx context.Context) {
 			"space_reclaimed", units.HumanSize(float64(res.Report.SpaceReclaimed)),
 		)
 	}
-}
-
-func (u *Updater) getPolicy(labels map[string]string) UpdatePolicy {
-	if p, ok := labels["orbitd.policy"]; ok {
-		return UpdatePolicy(p)
-	}
-	return UpdatePolicy(u.cfg.Policy)
 }
 
 func (u *Updater) getImageDigest(ctx context.Context, imageName string) (string, error) {

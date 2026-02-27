@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mizuchilabs/orbitd/internal/config"
+	"github.com/mizuchilabs/orbitd/internal/policy"
 	"github.com/mizuchilabs/orbitd/internal/updater"
 	"github.com/urfave/cli/v3"
 )
@@ -34,6 +35,14 @@ func main() {
    the latest digest while preserving all configuration, networks, volumes, and labels.
    Perfect for self-hosted services and Docker Compose setups.`,
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
+			level := slog.LevelInfo
+			if cmd.Bool("debug") {
+				level = slog.LevelDebug
+			}
+			slog.SetDefault(
+				slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})),
+			)
+
 			if _, err := os.Stat("/var/run/docker.sock"); err != nil {
 				slog.Warn("Docker socket not found", "path", "/var/run/docker.sock")
 			}
@@ -66,21 +75,16 @@ func main() {
 		},
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
-				Name:    "version",
-				Aliases: []string{"v"},
-				Usage:   "Print version information",
-			},
-			&cli.BoolFlag{
 				Name:    "debug",
 				Aliases: []string{"d"},
-				Usage:   "Enable debug logging for detailed output",
+				Usage:   "Enable debug logging",
 				Sources: cli.EnvVars("ORBITD_DEBUG"),
 			},
 			&cli.StringFlag{
 				Name:    "policy",
 				Aliases: []string{"p"},
 				Usage:   "Update policy (patch, minor, major, digest)",
-				Value:   "digest",
+				Value:   policy.Digest.String(),
 				Sources: cli.EnvVars("ORBITD_POLICY"),
 			},
 			&cli.DurationFlag{

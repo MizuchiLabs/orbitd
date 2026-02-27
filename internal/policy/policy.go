@@ -1,4 +1,5 @@
-package updater
+// Package policy defines update policies and resolves which image tag to pull.
+package policy
 
 import (
 	"context"
@@ -11,22 +12,13 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 )
 
-type UpdatePolicy string
-
-const (
-	PolicyDigest UpdatePolicy = "digest" // Default: same tag, new digest
-	PolicyPatch  UpdatePolicy = "patch"  // ~1.2.0 -> 1.2.x
-	PolicyMinor  UpdatePolicy = "minor"  // ^1.2.0 -> 1.x.x
-	PolicyMajor  UpdatePolicy = "major"  // Any newer version
-)
-
 // FindUpdateTarget returns the best available tag given a policy.
 func FindUpdateTarget(
 	ctx context.Context,
 	currentImage string,
-	policy UpdatePolicy,
+	updatePolicy Policy,
 ) (string, error) {
-	if !policy.IsValid() || policy == PolicyDigest {
+	if !updatePolicy.IsValid() || updatePolicy == Digest {
 		return currentImage, nil // Just re-pull same tag
 	}
 
@@ -55,16 +47,16 @@ func FindUpdateTarget(
 		return "", err
 	}
 
-	return findBestVersion(repo, tags, currentVer, policy)
+	return findBestVersion(repo, tags, currentVer, updatePolicy)
 }
 
 func findBestVersion(
 	repo string,
 	tags []string,
 	current *semver.Version,
-	policy UpdatePolicy,
+	updatePolicy Policy,
 ) (string, error) {
-	constraint, err := buildConstraint(current, policy)
+	constraint, err := buildConstraint(current, updatePolicy)
 	if err != nil {
 		return "", err
 	}
@@ -91,14 +83,15 @@ func findBestVersion(
 	return repo + ":" + pullTag, nil
 }
 
-func buildConstraint(current *semver.Version, policy UpdatePolicy) (*semver.Constraints, error) {
-	switch policy {
-	case PolicyPatch:
+func buildConstraint(
+	current *semver.Version,
+	updatePolicy Policy,
+) (*semver.Constraints, error) {
+	switch updatePolicy {
+	case Patch:
 		return semver.NewConstraint(fmt.Sprintf("~%s, > %s", current.String(), current.String()))
-	case PolicyMinor:
+	case Minor:
 		return semver.NewConstraint(fmt.Sprintf("^%s, > %s", current.String(), current.String()))
-	case PolicyMajor:
-		return semver.NewConstraint("> " + current.String())
 	default:
 		return semver.NewConstraint("> " + current.String())
 	}
@@ -119,12 +112,4 @@ func parseImage(image string) (repo, tag string, err error) {
 
 	// Digest or tagless reference
 	return repo, "", nil
-}
-
-func (p UpdatePolicy) IsValid() bool {
-	switch p {
-	case PolicyDigest, PolicyPatch, PolicyMinor, PolicyMajor:
-		return true
-	}
-	return false
 }
