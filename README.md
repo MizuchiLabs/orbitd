@@ -10,7 +10,7 @@
 
 A lightweight, set-and-forget container update daemon for Docker.
 
-Orbitd monitors your containers and automatically updates them when new images are available—preserving all configuration, networks, volumes, and labels.
+Orbitd monitors your containers and automatically updates them when new images are available, preserving all configuration, networks, volumes, and labels.
 
 ### Features
 
