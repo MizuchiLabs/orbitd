@@ -9,7 +9,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mizuchilabs/orbitd/internal/config"
 	"github.com/mizuchilabs/orbitd/internal/policy"
 	"github.com/mizuchilabs/orbitd/internal/updater"
 	"github.com/urfave/cli/v3"
@@ -68,8 +67,7 @@ func main() {
 				Aliases: []string{"s"},
 				Usage:   "Start the orbitd daemon to monitor and update containers",
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					cfg := config.Load(cmd)
-					return updater.New(ctx, cfg)
+					return updater.New(ctx, cmd)
 				},
 			},
 		},

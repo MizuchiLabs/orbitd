@@ -16,26 +16,38 @@ import (
 	"github.com/docker/go-sdk/container"
 	"github.com/docker/go-sdk/image"
 	"github.com/docker/go-units"
-	"github.com/mizuchilabs/orbitd/internal/config"
+	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/mizuchilabs/orbitd/internal/policy"
 	dockercontainer "github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	dockerclient "github.com/moby/moby/client"
+	"github.com/urfave/cli/v3"
 )
 
 type Updater struct {
-	cfg    *config.Config
-	docker client.SDKClient
+	Policy       policy.Policy // Update policy for semantic versioning
+	Interval     time.Duration // How often to check for container updates
+	Cleanup      bool          // Whether to remove old images after updates
+	RequireLabel bool          // Only monitor containers with orbitd.enable=true
+	hostname     string
+	docker       client.SDKClient
 }
 
-func New(ctx context.Context, cfg *config.Config) error {
+func New(ctx context.Context, cmd *cli.Command) error {
 	cli, err := client.New(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create docker client: %w", err)
 	}
 
-	slog.Info("Starting orbitd", "interval", cfg.Interval)
-	updater := &Updater{cfg: cfg, docker: cli}
+	hostname, _ := os.Hostname()
+	updater := &Updater{
+		Policy:       policy.Parse(cmd.String("policy")),
+		Interval:     max(5*time.Minute, cmd.Duration("interval")),
+		Cleanup:      cmd.Bool("cleanup"),
+		RequireLabel: cmd.Bool("require-label"),
+		hostname:     hostname,
+		docker:       cli,
+	}
 
 	// Handle shutdown
 	go func() {
@@ -47,7 +59,9 @@ func New(ctx context.Context, cfg *config.Config) error {
 }
 
 func (u *Updater) Start(ctx context.Context) error {
-	ticker := time.NewTicker(u.cfg.Interval)
+	slog.Info("Starting orbitd", "interval", u.Interval)
+
+	ticker := time.NewTicker(u.Interval)
 	defer ticker.Stop()
 
 	if err := u.check(ctx); err != nil {
@@ -83,13 +97,15 @@ func (u *Updater) check(ctx context.Context) error {
 			u.update(ctx, c)
 		}
 	}
+
+	u.pruneImages(ctx) // run once per cycle
 	return nil
 }
 
 func (u *Updater) isEnabled(c dockercontainer.Summary, containerName string) bool {
 	label := c.Labels["orbitd.enable"]
 
-	if u.cfg.RequireLabel {
+	if u.RequireLabel {
 		// Opt-in mode: only monitor containers explicitly enabled
 		if label != "true" {
 			slog.Debug("Skipping container (opt-in mode)", "container", containerName)
@@ -112,11 +128,11 @@ func (u *Updater) update(ctx context.Context, c dockercontainer.Summary) {
 	}
 
 	targetImage := c.Image
-	updatePolicy := u.cfg.Policy
+	updatePolicy := u.Policy
 
 	// Policy can be overridden by container label
 	if raw, ok := c.Labels["orbitd.policy"]; ok {
-		updatePolicy = policy.ParseOr(raw, u.cfg.Policy)
+		updatePolicy = policy.ParseOr(raw, u.Policy)
 	}
 
 	// For semver policies, find the target version
@@ -138,6 +154,16 @@ func (u *Updater) update(ctx context.Context, c dockercontainer.Summary) {
 
 	// Get digest before pull for comparison
 	oldDigest, _ := u.getImageDigest(ctx, targetImage)
+
+	// Check the remote registry digest via crane before asking Docker to pull
+	remoteDigest, err := crane.Digest(targetImage)
+	if err == nil && oldDigest != "" {
+		// Local repodigests look like "repo@sha256:...", remote is "sha256:..."
+		if strings.HasSuffix(oldDigest, remoteDigest) {
+			slog.Debug("Image already up to date", "image", targetImage)
+			return
+		}
+	}
 
 	pullCtx, cancel := context.WithTimeout(ctx, 15*time.Minute)
 	defer cancel()
@@ -168,7 +194,7 @@ func (u *Updater) update(ctx context.Context, c dockercontainer.Summary) {
 	}
 
 	// Only check for self-update when there's an actual update available
-	if isSelf(c) {
+	if u.isSelf(c) {
 		slog.Info("Self-update available, restart orbitd manually to apply")
 		return
 	}
@@ -276,12 +302,10 @@ func (u *Updater) recreate(ctx context.Context, imageName, containerID string) {
 	if err := oldContainer.Terminate(ctx); err != nil {
 		slog.Warn("Failed to remove", "container", backupName, "error", err)
 	}
-
-	u.pruneImages(ctx)
 }
 
 func (u *Updater) pruneImages(ctx context.Context) {
-	if !u.cfg.Cleanup {
+	if !u.Cleanup {
 		return
 	}
 
@@ -315,14 +339,11 @@ func (u *Updater) getImageDigest(ctx context.Context, imageName string) (string,
 	return inspect.ID, nil
 }
 
-func isSelf(c dockercontainer.Summary) bool {
-	hostname, err := os.Hostname() // container ID
-	if err != nil {
-		slog.Warn("Failed to get hostname", "error", err)
+func (u *Updater) isSelf(c dockercontainer.Summary) bool {
+	if u.hostname == "" {
 		return false
 	}
-
 	// Docker sets hostname to container ID by default (first 12 chars)
 	// Check if our hostname matches the container ID prefix
-	return strings.HasPrefix(c.ID, hostname)
+	return strings.HasPrefix(c.ID, u.hostname)
 }
