@@ -11,7 +11,7 @@ require (
 	github.com/google/go-containerregistry v0.21.1
 	github.com/moby/moby/api v1.53.0
 	github.com/moby/moby/client v0.2.2
-	github.com/urfave/cli/v3 v3.6.2
+	github.com/urfave/cli/v3 v3.7.0
 )
 
 require (
