@@ -4,9 +4,9 @@ go 1.26
 
 require (
 	github.com/Masterminds/semver/v3 v3.4.0
-	github.com/docker/go-sdk/client v0.1.0-alpha012
+	github.com/docker/go-sdk/client v0.1.0-alpha013
 	github.com/docker/go-sdk/container v0.1.0-alpha013
-	github.com/docker/go-sdk/image v0.1.0-alpha013
+	github.com/docker/go-sdk/image v0.1.0-alpha014
 	github.com/docker/go-units v0.5.0
 	github.com/google/go-containerregistry v0.21.1
 	github.com/moby/moby/api v1.53.0
@@ -32,8 +32,8 @@ require (
 	github.com/docker/distribution v2.8.3+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.9.5 // indirect
 	github.com/docker/go-connections v0.6.0 // indirect
-	github.com/docker/go-sdk/config v0.1.0-alpha012 // indirect
-	github.com/docker/go-sdk/context v0.1.0-alpha012 // indirect
+	github.com/docker/go-sdk/config v0.1.0-alpha013 // indirect
+	github.com/docker/go-sdk/context v0.1.0-alpha013 // indirect
 	github.com/docker/go-sdk/network v0.1.0-alpha012 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
