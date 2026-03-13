@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"maps"
 	"os"
 	"strings"
 	"time"
@@ -243,28 +242,22 @@ func (u *Updater) recreate(ctx context.Context, imageName, containerID string) {
 		return
 	}
 
-	if _, err = container.Run(
-		ctx,
-		container.WithClient(u.docker),
-		container.WithImage(imageName),
-		container.WithName(containerName),
-		container.WithConfigModifier(
-			func(config *dockercontainer.Config) {
-				*config = *ins.Container.Config
-				config.Image = imageName
-			},
-		),
-		container.WithHostConfigModifier(
-			func(hostConfig *dockercontainer.HostConfig) {
-				*hostConfig = *ins.Container.HostConfig
-			},
-		),
-		container.WithEndpointSettingsModifier(
-			func(endpointsConfig map[string]*network.EndpointSettings) {
-				maps.Copy(endpointsConfig, ins.Container.NetworkSettings.Networks)
-			},
-		),
-	); err != nil {
+	newConfig := *ins.Container.Config
+	newConfig.Image = imageName
+
+	resp, err := u.docker.ContainerCreate(ctx, dockerclient.ContainerCreateOptions{
+		Name:       containerName,
+		Config:     &newConfig,
+		HostConfig: ins.Container.HostConfig,
+		NetworkingConfig: &network.NetworkingConfig{
+			EndpointsConfig: ins.Container.NetworkSettings.Networks,
+		},
+	})
+	if err == nil {
+		_, err = u.docker.ContainerStart(ctx, resp.ID, dockerclient.ContainerStartOptions{})
+	}
+
+	if err != nil {
 		slog.Error("Failed to start", "container", containerName, "error", err)
 
 		// Rollback: rename old container back and restart it
