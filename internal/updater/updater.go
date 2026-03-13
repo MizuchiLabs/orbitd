@@ -245,12 +245,30 @@ func (u *Updater) recreate(ctx context.Context, imageName, containerID string) {
 	newConfig := *ins.Container.Config
 	newConfig.Image = imageName
 
+	// If the old container's hostname was auto-generated (matches the short ID),
+	// clear it so the new container gets a fresh auto-generated one
+	if len(ins.Container.ID) >= 12 && newConfig.Hostname == ins.Container.ID[:12] {
+		newConfig.Hostname = ""
+	}
+
+	// Sanitize network settings to remove operational data (like EndpointID, dynamic IPs)
+	// which can cause conflicts since the old container is still stopped (not removed).
+	endpointsConfig := make(map[string]*network.EndpointSettings)
+	for netName, epSettings := range ins.Container.NetworkSettings.Networks {
+		endpointsConfig[netName] = &network.EndpointSettings{
+			IPAMConfig: epSettings.IPAMConfig,
+			Links:      epSettings.Links,
+			Aliases:    epSettings.Aliases,
+			DriverOpts: epSettings.DriverOpts,
+		}
+	}
+
 	resp, err := u.docker.ContainerCreate(ctx, dockerclient.ContainerCreateOptions{
 		Name:       containerName,
 		Config:     &newConfig,
 		HostConfig: ins.Container.HostConfig,
 		NetworkingConfig: &network.NetworkingConfig{
-			EndpointsConfig: ins.Container.NetworkSettings.Networks,
+			EndpointsConfig: endpointsConfig,
 		},
 	})
 	if err == nil {
@@ -258,7 +276,22 @@ func (u *Updater) recreate(ctx context.Context, imageName, containerID string) {
 	}
 
 	if err != nil {
-		slog.Error("Failed to start", "container", containerName, "error", err)
+		slog.Error(
+			"Failed to start or create new container",
+			"container",
+			containerName,
+			"error",
+			err,
+		)
+
+		// If the new container was created but failed to start, remove it to free the name.
+		if resp.ID != "" {
+			_, _ = u.docker.ContainerRemove(
+				ctx,
+				resp.ID,
+				dockerclient.ContainerRemoveOptions{Force: true},
+			)
+		}
 
 		// Rollback: rename old container back and restart it
 		if _, renameErr := u.docker.ContainerRename(ctx, containerID, dockerclient.ContainerRenameOptions{
