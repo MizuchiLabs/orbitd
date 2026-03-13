@@ -4,14 +4,14 @@ go 1.26
 
 require (
 	github.com/Masterminds/semver/v3 v3.4.0
-	github.com/docker/go-sdk/client v0.1.0-alpha012
-	github.com/docker/go-sdk/container v0.1.0-alpha013
-	github.com/docker/go-sdk/image v0.1.0-alpha013
+	github.com/docker/go-sdk/client v0.1.0-alpha013
+	github.com/docker/go-sdk/container v0.1.0-alpha014
+	github.com/docker/go-sdk/image v0.1.0-alpha014
 	github.com/docker/go-units v0.5.0
-	github.com/google/go-containerregistry v0.21.1
-	github.com/moby/moby/api v1.53.0
-	github.com/moby/moby/client v0.2.2
-	github.com/urfave/cli/v3 v3.6.2
+	github.com/google/go-containerregistry v0.21.2
+	github.com/moby/moby/api v1.54.0
+	github.com/moby/moby/client v0.3.0
+	github.com/urfave/cli/v3 v3.7.0
 )
 
 require (
@@ -28,13 +28,13 @@ require (
 	github.com/containerd/stargz-snapshotter/estargz v0.18.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
-	github.com/docker/cli v29.2.1+incompatible // indirect
+	github.com/docker/cli v29.3.0+incompatible // indirect
 	github.com/docker/distribution v2.8.3+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.9.5 // indirect
 	github.com/docker/go-connections v0.6.0 // indirect
-	github.com/docker/go-sdk/config v0.1.0-alpha012 // indirect
-	github.com/docker/go-sdk/context v0.1.0-alpha012 // indirect
-	github.com/docker/go-sdk/network v0.1.0-alpha012 // indirect
+	github.com/docker/go-sdk/config v0.1.0-alpha013 // indirect
+	github.com/docker/go-sdk/context v0.1.0-alpha013 // indirect
+	github.com/docker/go-sdk/network v0.1.0-alpha013 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -55,11 +55,11 @@ require (
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/vbatts/tar-split v0.12.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.65.0 // indirect
-	go.opentelemetry.io/otel v1.40.0 // indirect
-	go.opentelemetry.io/otel/metric v1.40.0 // indirect
-	go.opentelemetry.io/otel/trace v1.40.0 // indirect
-	golang.org/x/sync v0.19.0 // indirect
-	golang.org/x/sys v0.41.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.67.0 // indirect
+	go.opentelemetry.io/otel v1.42.0 // indirect
+	go.opentelemetry.io/otel/metric v1.42.0 // indirect
+	go.opentelemetry.io/otel/trace v1.42.0 // indirect
+	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/sys v0.42.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
