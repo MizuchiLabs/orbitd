@@ -23,8 +23,13 @@ jobs:
         with:
           go-version-file: "go.mod"
 
-      - name: Install Task
-        uses: go-task/setup-task@v1
+      - name: Lint and test
+        run: |
+          go mod tidy
+          go mod verify
+          go fmt ./...
+          go vet ./...
+          go test ./...
 
       - name: Install GolangCI-Lint
         uses: golangci/golangci-lint-action@v9
@@ -36,8 +41,8 @@ jobs:
         with:
           args: -exclude-generated ./...
 
-      - name: Run tests
-        run: task lint
+      - name: Build
+        run: go build -ldflags="-s -w" -o bin/
 
       - name: ghcr.io cleanup
         uses: dataaxiom/ghcr-cleanup-action@v1
