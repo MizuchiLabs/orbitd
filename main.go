@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -49,8 +50,12 @@ func main() {
 			}
 
 			// Create empty Docker config if it doesn't exist
-			dockerConfigDir := os.ExpandEnv("$HOME/.docker")
-			dockerConfigPath := dockerConfigDir + "/config.json"
+			homeDir, err := os.UserHomeDir()
+			if err != nil {
+				homeDir = os.ExpandEnv("$HOME")
+			}
+			dockerConfigDir := filepath.Join(homeDir, ".docker")
+			dockerConfigPath := filepath.Join(dockerConfigDir, "config.json")
 			if _, err := os.Stat(dockerConfigPath); os.IsNotExist(err) {
 				if err := os.MkdirAll(dockerConfigDir, 0o750); err == nil {
 					_ = os.WriteFile(dockerConfigPath, []byte("{}"), 0o600)
