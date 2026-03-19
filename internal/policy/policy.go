@@ -3,7 +3,6 @@ package policy
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
@@ -14,26 +13,22 @@ import (
 )
 
 // FindUpdateTarget resolves the best available tag for a policy.
-func FindUpdateTarget(
-	ctx context.Context,
-	currentImage string,
-	updatePolicy Policy,
-) (string, error) {
-	if !updatePolicy.IsValid() || updatePolicy == Digest {
-		return currentImage, nil // Keep current tag
+func FindUpdateTarget(ctx context.Context, image string, policy Policy) (string, error) {
+	if !policy.IsValid() || policy == Digest {
+		return image, nil // Keep current tag
 	}
 
-	repo, tag, err := parseImage(currentImage)
+	repo, tag, err := parseImage(image)
 	if err != nil {
 		return "", err
 	}
 	if tag == "" {
-		return currentImage, nil // Cannot semver match digest/tagless
+		return image, nil // Cannot semver match digest/tagless
 	}
 
 	currentVer, err := semver.NewVersion(tag)
 	if err != nil {
-		return currentImage, nil // Fallback to digest if not semver
+		return image, nil // Fallback to digest if not semver
 	}
 
 	listCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -49,30 +44,28 @@ func FindUpdateTarget(
 		return "", err
 	}
 
-	return findBestVersion(repo, tags, currentVer, updatePolicy)
+	return findBestVersion(repo, tags, currentVer, policy)
 }
 
 func findBestVersion(
 	repo string,
 	tags []string,
 	current *semver.Version,
-	updatePolicy Policy,
+	policy Policy,
 ) (string, error) {
-	constraint, err := buildConstraint(current, updatePolicy)
-	if err != nil {
-		return "", err
-	}
-
 	var best *semver.Version
 	var pullTag string
+
 	for _, tag := range tags {
 		v, err := semver.NewVersion(tag)
 		if err != nil {
 			continue
 		}
-		if !constraint.Check(v) {
+
+		if !isAllowed(v, current, policy) {
 			continue
 		}
+
 		if best == nil || v.GreaterThan(best) {
 			best = v
 			pullTag = tag
@@ -85,17 +78,23 @@ func findBestVersion(
 	return repo + ":" + pullTag, nil
 }
 
-func buildConstraint(
-	current *semver.Version,
-	updatePolicy Policy,
-) (*semver.Constraints, error) {
-	switch updatePolicy {
+func isAllowed(v, current *semver.Version, policy Policy) bool {
+	// Prevent updating to prerelease if current is not prerelease
+	if v.Prerelease() != "" && current.Prerelease() == "" {
+		return false
+	}
+
+	if !v.GreaterThan(current) {
+		return false
+	}
+
+	switch policy {
 	case Patch:
-		return semver.NewConstraint(fmt.Sprintf("~%s, > %s", current.String(), current.String()))
+		return v.Major() == current.Major() && v.Minor() == current.Minor()
 	case Minor:
-		return semver.NewConstraint(fmt.Sprintf("^%s, > %s", current.String(), current.String()))
-	default:
-		return semver.NewConstraint("> " + current.String())
+		return v.Major() == current.Major()
+	default: // Major
+		return true
 	}
 }
 
