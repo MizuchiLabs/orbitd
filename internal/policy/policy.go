@@ -13,14 +13,14 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 )
 
-// FindUpdateTarget returns the best available tag given a policy.
+// FindUpdateTarget resolves the best available tag for a policy.
 func FindUpdateTarget(
 	ctx context.Context,
 	currentImage string,
 	updatePolicy Policy,
 ) (string, error) {
 	if !updatePolicy.IsValid() || updatePolicy == Digest {
-		return currentImage, nil // Just re-pull same tag
+		return currentImage, nil // Keep current tag
 	}
 
 	repo, tag, err := parseImage(currentImage)
@@ -28,12 +28,12 @@ func FindUpdateTarget(
 		return "", err
 	}
 	if tag == "" {
-		return currentImage, nil // digest reference or tagless reference -> can't semver match
+		return currentImage, nil // Cannot semver match digest/tagless
 	}
 
 	currentVer, err := semver.NewVersion(tag)
 	if err != nil {
-		return currentImage, nil // Not semver, fall back to digest
+		return currentImage, nil // Fallback to digest if not semver
 	}
 
 	listCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -99,19 +99,19 @@ func buildConstraint(
 	}
 }
 
-func parseImage(image string) (repo, tag string, err error) {
-	ref, err := name.ParseReference(image, name.WeakValidation)
+func parseImage(img string) (repo, tag string, err error) {
+	ref, err := name.ParseReference(img, name.WeakValidation)
 	if err != nil {
 		return "", "", err
 	}
 
-	// repo should be without tag/digest
+	// Strip tag/digest from repo
 	repo = ref.Context().String()
 
 	if t, ok := ref.(name.Tag); ok {
 		return repo, t.TagStr(), nil
 	}
 
-	// Digest or tagless reference
+	// Digest or tagless
 	return repo, "", nil
 }

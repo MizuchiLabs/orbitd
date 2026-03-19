@@ -49,7 +49,7 @@ func main() {
 				_ = os.Setenv("DOCKER_HOST", "unix:///var/run/docker.sock")
 			}
 
-			// Create empty Docker config if it doesn't exist
+			// Ensure empty Docker config exists
 			homeDir, err := os.UserHomeDir()
 			if err != nil {
 				homeDir = os.ExpandEnv("$HOME")

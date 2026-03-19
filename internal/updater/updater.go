@@ -1,5 +1,4 @@
-// Package updater periodically checks running containers and recreates them
-// when newer images are available.
+// Package updater monitors and updates containers.
 package updater
 
 import (
@@ -25,10 +24,10 @@ import (
 )
 
 type Updater struct {
-	Policy       policy.Policy // Update policy for semantic versioning
-	Interval     time.Duration // How often to check for container updates
-	Cleanup      bool          // Whether to remove old images after updates
-	RequireLabel bool          // Only monitor containers with orbitd.enable=true
+	Policy       policy.Policy // Update policy (patch, minor, major, digest)
+	Interval     time.Duration // Update check interval
+	Cleanup      bool          // Prune old images
+	RequireLabel bool          // Only monitor orbitd.enable=true
 	hostname     string
 	docker       client.SDKClient
 }
@@ -102,19 +101,19 @@ func (u *Updater) check(ctx context.Context) error {
 	return nil
 }
 
-func (u *Updater) isEnabled(c dockercontainer.Summary, containerName string) bool {
+func (u *Updater) isEnabled(c dockercontainer.Summary, name string) bool {
 	label := c.Labels["orbitd.enable"]
 
 	if u.RequireLabel {
-		// Opt-in mode: only monitor containers explicitly enabled
+		// Opt-in mode
 		if label != "true" {
-			slog.Debug("Skipping container (opt-in mode)", "container", containerName)
+			slog.Debug("Skipping (opt-in)", "container", name)
 			return false
 		}
 	} else {
-		// Default mode: monitor all except explicitly disabled
+		// Opt-out mode
 		if label == "false" {
-			slog.Debug("Skipping disabled", "container", containerName)
+			slog.Debug("Skipping (disabled)", "container", name)
 			return false
 		}
 	}
@@ -123,47 +122,47 @@ func (u *Updater) isEnabled(c dockercontainer.Summary, containerName string) boo
 
 func (u *Updater) update(ctx context.Context, c dockercontainer.Summary) {
 	if strings.HasPrefix(c.Image, "sha256:") {
-		slog.Debug("Container running with untagged digest, skipping update", "image", c.Image)
+		slog.Debug("Skipping untagged digest", "image", c.Image)
 		return
 	}
 
-	targetImage := c.Image
-	updatePolicy := u.Policy
+	targetImg := c.Image
+	pol := u.Policy
 
-	// Policy can be overridden by container label
+	// Check for container-specific policy override
 	if raw, ok := c.Labels["orbitd.policy"]; ok {
-		updatePolicy = policy.ParseOr(raw, u.Policy)
+		pol = policy.ParseOr(raw, u.Policy)
 	}
 
-	// For semver policies, find the target version
-	if updatePolicy != policy.Digest {
-		target, err := policy.FindUpdateTarget(ctx, c.Image, updatePolicy)
+	// Resolve semver target
+	if pol != policy.Digest {
+		target, err := policy.FindUpdateTarget(ctx, c.Image, pol)
 		if err != nil {
-			slog.Warn("Failed to find update target, skipping", "image", c.Image, "error", err)
+			slog.Warn("Failed to resolve target", "image", c.Image, "error", err)
 			return
 		}
 		if target == "" {
-			slog.Debug("No update available", "image", c.Image, "policy", updatePolicy)
+			slog.Debug("No update available", "image", c.Image, "policy", pol)
 			return
 		}
 		if target != c.Image {
-			slog.Info("Found update", "from", c.Image, "to", target, "policy", updatePolicy)
-			targetImage = target
+			slog.Info("Found update", "from", c.Image, "to", target, "policy", pol)
+			targetImg = target
 		}
 	}
 
-	// Get digest before pull for comparison
-	oldDigest, _ := u.getImageDigest(ctx, targetImage)
+	// Store current digest
+	oldDigest, _ := u.getImageDigest(ctx, targetImg)
 
-	// Check the remote registry digest via crane before asking Docker to pull
+	// Compare remote digest before pulling
 	remoteDigest, err := crane.Digest(
-		targetImage,
+		targetImg,
 		crane.WithAuthFromKeychain(authn.DefaultKeychain),
 	)
 	if err == nil && oldDigest != "" {
-		// Local repodigests look like "repo@sha256:...", remote is "sha256:..."
+		// Check if remote digest matches local
 		if strings.HasSuffix(oldDigest, remoteDigest) {
-			slog.Debug("Image already up to date", "image", targetImage)
+			slog.Debug("Image up to date", "image", targetImg)
 			return
 		}
 	}
@@ -173,92 +172,89 @@ func (u *Updater) update(ctx context.Context, c dockercontainer.Summary) {
 
 	if err := image.Pull(
 		pullCtx,
-		targetImage,
+		targetImg,
 		image.WithPullClient(u.docker),
 		image.WithPullHandler(func(r io.ReadCloser) error {
 			_, err := io.Copy(io.Discard, r)
 			return err
 		}),
 	); err != nil {
-		slog.Warn("Failed to pull image, will retry next cycle", "image", targetImage, "error", err)
+		slog.Warn("Failed to pull image", "image", targetImg, "error", err)
 		return
 	}
 
-	// for digest comparisons
-	newDigest, err := u.getImageDigest(ctx, targetImage)
+	// Get new digest for comparison
+	newDigest, err := u.getImageDigest(ctx, targetImg)
 	if err != nil {
-		slog.Warn("Failed to get new image digest", "image", targetImage, "error", err)
+		slog.Warn("Failed to get new digest", "image", targetImg, "error", err)
 		return
 	}
 
-	if targetImage == c.Image && oldDigest != "" && oldDigest == newDigest {
-		slog.Debug("Image already up to date", "image", targetImage)
+	if targetImg == c.Image && oldDigest != "" && oldDigest == newDigest {
+		slog.Debug("Image up to date", "image", targetImg)
 		return
 	}
 
-	// Only check for self-update when there's an actual update available
+	// Defer self-updates to avoid crashing mid-run
 	if u.isSelf(c) {
 		slog.Info("Self-update available, restart orbitd manually to apply")
 		return
 	}
 
-	u.recreate(ctx, targetImage, c.ID)
+	u.recreate(ctx, targetImg, c.ID)
 }
 
-func (u *Updater) recreate(ctx context.Context, imageName, containerID string) {
-	oldContainer, err := container.FromID(ctx, u.docker, containerID)
+func (u *Updater) recreate(ctx context.Context, image, id string) {
+	oldC, err := container.FromID(ctx, u.docker, id)
 	if err != nil {
-		slog.Error("Failed to get container", "image", imageName, "error", err)
+		slog.Error("Failed to get container", "image", image, "error", err)
 		return
 	}
-	ins, err := oldContainer.Inspect(ctx)
+	info, err := oldC.Inspect(ctx)
 	if err != nil {
-		slog.Error("Failed to inspect container", "image", imageName, "error", err)
+		slog.Error("Failed to inspect container", "image", image, "error", err)
 		return
 	}
 
-	containerName := strings.TrimPrefix(ins.Container.Name, "/")
+	name := strings.TrimPrefix(info.Container.Name, "/")
 
-	if !oldContainer.IsRunning() {
-		slog.Debug("Container stopped, ignoring restart", "container", containerName)
+	if !oldC.IsRunning() {
+		slog.Debug("Skipping stopped container", "container", name)
 		return
 	}
 
-	// Stop the container but don't remove it yet (for rollback)
-	if err := oldContainer.Stop(ctx); err != nil {
-		slog.Error("Failed to stop", "container", containerName, "error", err)
+	// Stop old container (keep for rollback)
+	if err := oldC.Stop(ctx); err != nil {
+		slog.Error("Failed to stop", "container", name, "error", err)
 		return
 	}
 
-	// Rename old container to free up the name
-	backupName := containerName + "-orbitd-old"
+	// Free up container name
+	backupName := name + "-orbitd-old"
 	if _, err := u.docker.ContainerRename(
 		ctx,
-		containerID,
+		id,
 		dockerclient.ContainerRenameOptions{NewName: backupName},
 	); err != nil {
-		slog.Error("Failed to rename", "container", containerName, "error", err)
-		// Try to restart old container with original name
-		if startErr := oldContainer.Start(ctx); startErr != nil {
-			slog.Error("Failed to restart container after rename failure",
-				"container", containerName, "error", startErr)
+		slog.Error("Failed to rename", "container", name, "error", err)
+		// Rollback on rename failure
+		if startErr := oldC.Start(ctx); startErr != nil {
+			slog.Error("Failed to restart container", "container", name, "error", startErr)
 		}
 		return
 	}
 
-	newConfig := *ins.Container.Config
-	newConfig.Image = imageName
+	newConfig := *info.Container.Config
+	newConfig.Image = image
 
-	// If the old container's hostname was auto-generated (matches the short ID),
-	// clear it so the new container gets a fresh auto-generated one
-	if len(ins.Container.ID) >= 12 && newConfig.Hostname == ins.Container.ID[:12] {
+	// Clear auto-generated hostnames
+	if len(info.Container.ID) >= 12 && newConfig.Hostname == info.Container.ID[:12] {
 		newConfig.Hostname = ""
 	}
 
-	// Sanitize network settings to remove operational data (like EndpointID, dynamic IPs)
-	// which can cause conflicts since the old container is still stopped (not removed).
+	// Strip operational network data to prevent conflicts
 	endpointsConfig := make(map[string]*network.EndpointSettings)
-	for netName, epSettings := range ins.Container.NetworkSettings.Networks {
+	for netName, epSettings := range info.Container.NetworkSettings.Networks {
 		endpointsConfig[netName] = &network.EndpointSettings{
 			IPAMConfig: epSettings.IPAMConfig,
 			Links:      epSettings.Links,
@@ -268,9 +264,9 @@ func (u *Updater) recreate(ctx context.Context, imageName, containerID string) {
 	}
 
 	resp, err := u.docker.ContainerCreate(ctx, dockerclient.ContainerCreateOptions{
-		Name:       containerName,
+		Name:       name,
 		Config:     &newConfig,
-		HostConfig: ins.Container.HostConfig,
+		HostConfig: info.Container.HostConfig,
 		NetworkingConfig: &network.NetworkingConfig{
 			EndpointsConfig: endpointsConfig,
 		},
@@ -280,57 +276,35 @@ func (u *Updater) recreate(ctx context.Context, imageName, containerID string) {
 	}
 
 	if err != nil {
-		slog.Error(
-			"Failed to start or create new container",
-			"container",
-			containerName,
-			"error",
-			err,
-		)
+		slog.Error("Failed to start new container", "container", name, "error", err)
 
-		// If the new container was created but failed to start, remove it to free the name.
+		// Cleanup failed new container
 		if resp.ID != "" {
-			_, _ = u.docker.ContainerRemove(
-				ctx,
-				resp.ID,
-				dockerclient.ContainerRemoveOptions{Force: true},
-			)
+			_, _ = u.docker.ContainerRemove(ctx, resp.ID, dockerclient.ContainerRemoveOptions{Force: true})
 		}
 
-		// Rollback: rename old container back and restart it
-		if _, renameErr := u.docker.ContainerRename(ctx, containerID, dockerclient.ContainerRenameOptions{
-			NewName: containerName,
+		// Execute rollback
+		if _, renameErr := u.docker.ContainerRename(ctx, id, dockerclient.ContainerRenameOptions{
+			NewName: name,
 		}); renameErr != nil {
-			slog.Error(
-				"Failed to rename container back during rollback",
-				"container",
-				containerName,
-				"error",
-				renameErr,
-			)
+			slog.Error("Failed to rename during rollback", "container", name, "error", renameErr)
 			return
 		}
 
-		if startErr := oldContainer.Start(ctx); startErr != nil {
-			slog.Error(
-				"Rollback failed, container is DOWN",
-				"container",
-				containerName,
-				"error",
-				startErr,
-			)
+		if startErr := oldC.Start(ctx); startErr != nil {
+			slog.Error("Rollback failed, container is DOWN", "container", name, "error", startErr)
 			return
 		}
 
-		slog.Info("Successfully rolled back", "container", containerName)
+		slog.Info("Successfully rolled back", "container", name)
 		return
 	}
 
-	slog.Info("Successfully updated", "container", containerName)
+	slog.Info("Successfully updated", "container", name)
 
-	// Remove old container
-	if err := oldContainer.Terminate(ctx); err != nil {
-		slog.Warn("Failed to remove", "container", backupName, "error", err)
+	// Cleanup old container
+	if err := oldC.Terminate(ctx); err != nil {
+		slog.Warn("Failed to remove old container", "container", backupName, "error", err)
 	}
 }
 
@@ -356,24 +330,23 @@ func (u *Updater) pruneImages(ctx context.Context) {
 	}
 }
 
-func (u *Updater) getImageDigest(ctx context.Context, imageName string) (string, error) {
-	inspect, err := u.docker.ImageInspect(ctx, imageName)
+func (u *Updater) getImageDigest(ctx context.Context, image string) (string, error) {
+	info, err := u.docker.ImageInspect(ctx, image)
 	if err != nil {
 		return "", err
 	}
 
-	// Use RepoDigests if available
-	if len(inspect.RepoDigests) > 0 {
-		return inspect.RepoDigests[0], nil
+	// Prefer RepoDigests
+	if len(info.RepoDigests) > 0 {
+		return info.RepoDigests[0], nil
 	}
-	return inspect.ID, nil
+	return info.ID, nil
 }
 
 func (u *Updater) isSelf(c dockercontainer.Summary) bool {
 	if u.hostname == "" {
 		return false
 	}
-	// Docker sets hostname to container ID by default (first 12 chars)
-	// Check if our hostname matches the container ID prefix
+	// Check if container ID prefix matches our hostname
 	return strings.HasPrefix(c.ID, u.hostname)
 }

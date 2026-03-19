@@ -48,6 +48,6 @@ func ParseOr(pol string, fallback Policy) Policy {
 	return Digest
 }
 
-func normalize(pol string) Policy {
-	return Policy(strings.ToLower(strings.TrimSpace(pol)))
+func normalize(p string) Policy {
+	return Policy(strings.ToLower(strings.TrimSpace(p)))
 }
