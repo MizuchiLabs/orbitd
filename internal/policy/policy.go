@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
@@ -42,6 +43,7 @@ func FindUpdateTarget(
 		repo,
 		crane.WithContext(listCtx),
 		crane.WithTransport(remote.DefaultTransport),
+		crane.WithAuthFromKeychain(authn.DefaultKeychain),
 	)
 	if err != nil {
 		return "", err

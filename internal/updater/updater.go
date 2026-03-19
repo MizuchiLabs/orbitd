@@ -15,6 +15,7 @@ import (
 	"github.com/docker/go-sdk/container"
 	"github.com/docker/go-sdk/image"
 	"github.com/docker/go-units"
+	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/mizuchilabs/orbitd/internal/policy"
 	dockercontainer "github.com/moby/moby/api/types/container"
@@ -155,7 +156,10 @@ func (u *Updater) update(ctx context.Context, c dockercontainer.Summary) {
 	oldDigest, _ := u.getImageDigest(ctx, targetImage)
 
 	// Check the remote registry digest via crane before asking Docker to pull
-	remoteDigest, err := crane.Digest(targetImage)
+	remoteDigest, err := crane.Digest(
+		targetImage,
+		crane.WithAuthFromKeychain(authn.DefaultKeychain),
+	)
 	if err == nil && oldDigest != "" {
 		// Local repodigests look like "repo@sha256:...", remote is "sha256:..."
 		if strings.HasSuffix(oldDigest, remoteDigest) {
