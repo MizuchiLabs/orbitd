@@ -90,8 +90,8 @@ func (u *Updater) check(ctx context.Context) error {
 			slog.Warn("Container has no names, skipping", "id", c.ID)
 			continue
 		}
-		containerName := strings.TrimPrefix(c.Names[0], "/")
 
+		containerName := strings.TrimPrefix(c.Names[0], "/")
 		if u.isEnabled(c, containerName) {
 			u.update(ctx, c)
 		}
@@ -254,12 +254,12 @@ func (u *Updater) recreate(ctx context.Context, image, id string) {
 
 	// Strip operational network data to prevent conflicts
 	endpointsConfig := make(map[string]*network.EndpointSettings)
-	for netName, epSettings := range info.Container.NetworkSettings.Networks {
-		endpointsConfig[netName] = &network.EndpointSettings{
-			IPAMConfig: epSettings.IPAMConfig,
-			Links:      epSettings.Links,
-			Aliases:    epSettings.Aliases,
-			DriverOpts: epSettings.DriverOpts,
+	for name, n := range info.Container.NetworkSettings.Networks {
+		endpointsConfig[name] = &network.EndpointSettings{
+			IPAMConfig: n.IPAMConfig,
+			Links:      n.Links,
+			Aliases:    n.Aliases,
+			DriverOpts: n.DriverOpts,
 		}
 	}
 
@@ -280,7 +280,11 @@ func (u *Updater) recreate(ctx context.Context, image, id string) {
 
 		// Cleanup failed new container
 		if resp.ID != "" {
-			_, _ = u.docker.ContainerRemove(ctx, resp.ID, dockerclient.ContainerRemoveOptions{Force: true})
+			_, _ = u.docker.ContainerRemove(
+				ctx,
+				resp.ID,
+				dockerclient.ContainerRemoveOptions{Force: true},
+			)
 		}
 
 		// Execute rollback
