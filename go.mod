@@ -9,7 +9,7 @@ require (
 	github.com/docker/go-sdk/image v0.1.0-alpha014
 	github.com/docker/go-units v0.5.0
 	github.com/google/go-containerregistry v0.21.3
-	github.com/moby/moby/api v1.54.0
+	github.com/moby/moby/api v1.54.1
 	github.com/moby/moby/client v0.3.0
 	github.com/urfave/cli/v3 v3.7.0
 )
