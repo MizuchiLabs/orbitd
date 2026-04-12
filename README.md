@@ -14,11 +14,11 @@ Orbitd monitors your containers and automatically updates them when new images a
 
 ### Features
 
-- **Zero Configuration** — Works out of the box with sensible defaults
-- **Automatic Rollback** — Restores previous container on update failure
-- **Flexible Policies** — Digest-only or semantic versioning (patch/minor/major)
-- **Label Control** — Opt-in or opt-out specific containers
-- **Image Cleanup** — Removes old images after successful updates
+- **Zero Configuration**: Works out of the box with sensible defaults
+- **Automatic Rollback**: Restores previous container on update failure
+- **Flexible Policies**: Digest-only or semantic versioning (patch/minor/major)
+- **Label Control**: Opt-in or opt-out specific containers
+- **Image Cleanup**: Removes old images after successful updates
 
 ## Quick Start
 
