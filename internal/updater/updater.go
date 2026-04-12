@@ -80,44 +80,21 @@ func (u *Updater) Start(ctx context.Context) error {
 }
 
 func (u *Updater) check(ctx context.Context) error {
-	containers, err := u.docker.ContainerList(ctx, dockerclient.ContainerListOptions{})
+	filters := dockerclient.Filters{}
+	if u.RequireLabel {
+		filters.Add("label", "orbitd.enable=true")
+	}
+	res, err := u.docker.ContainerList(ctx, dockerclient.ContainerListOptions{Filters: filters})
 	if err != nil {
 		return fmt.Errorf("failed to list containers: %w", err)
 	}
 
-	for _, c := range containers.Items {
-		if len(c.Names) == 0 {
-			slog.Warn("Container has no names, skipping", "id", c.ID)
-			continue
-		}
-
-		containerName := strings.TrimPrefix(c.Names[0], "/")
-		if u.isEnabled(c, containerName) {
-			u.update(ctx, c)
-		}
+	for _, c := range res.Items {
+		u.update(ctx, c)
 	}
 
 	u.pruneImages(ctx) // run once per cycle
 	return nil
-}
-
-func (u *Updater) isEnabled(c dockercontainer.Summary, name string) bool {
-	label := c.Labels["orbitd.enable"]
-
-	if u.RequireLabel {
-		// Opt-in mode
-		if label != "true" {
-			slog.Debug("Skipping (opt-in)", "container", name)
-			return false
-		}
-	} else {
-		// Opt-out mode
-		if label == "false" {
-			slog.Debug("Skipping (disabled)", "container", name)
-			return false
-		}
-	}
-	return true
 }
 
 func (u *Updater) update(ctx context.Context, c dockercontainer.Summary) {

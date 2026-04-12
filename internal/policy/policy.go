@@ -9,7 +9,6 @@ import (
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/google/go-containerregistry/pkg/name"
-	"github.com/google/go-containerregistry/pkg/v1/remote"
 )
 
 // FindUpdateTarget resolves the best available tag for a policy.
@@ -37,7 +36,6 @@ func FindUpdateTarget(ctx context.Context, image string, policy Policy) (string,
 	tags, err := crane.ListTags(
 		repo,
 		crane.WithContext(listCtx),
-		crane.WithTransport(remote.DefaultTransport),
 		crane.WithAuthFromKeychain(authn.DefaultKeychain),
 	)
 	if err != nil {
