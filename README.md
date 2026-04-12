@@ -60,40 +60,26 @@ All settings are optional. Configure via environment variables or CLI flags:
 
 ## Container Labels
 
-Control individual containers with labels:
+By default, orbitd monitors **all** running containers. Use `ORBITD_REQUIRE_LABEL=true` to switch to opt-in mode, where only containers with `orbitd.enable=true` are monitored.
+
+You can also override the update policy per container with `orbitd.policy`:
 
 ```yaml
 services:
-  # Updated automatically (default behavior)
-  app:
-    image: myapp:latest
-
-  # Excluded from updates
-  database:
-    image: postgres:15
-    labels:
-      - "orbitd.enable=false"
-
-  # Custom policy for this container
-  api:
-    image: myapi:1.0.0
-    labels:
-      - "orbitd.policy=minor"
-```
-
-### Opt-In Mode
-
-With `ORBITD_REQUIRE_LABEL=true`, only containers with `orbitd.enable=true` are monitored:
-
-```yaml
-services:
-  # Only this container is updated
+  # Opt-in to monitoring (required when require-label is enabled)
   app:
     image: myapp:latest
     labels:
       - "orbitd.enable=true"
 
-  # Ignored
+  # Override policy for this container
+  api:
+    image: myapi:1.0.0
+    labels:
+      - "orbitd.enable=true"
+      - "orbitd.policy=minor"
+
+  # Not monitored (no label)
   database:
     image: postgres:15
 ```

@@ -14,11 +14,7 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-var (
-	Version   = "dev"
-	Commit    = "none"
-	BuildDate = "unknown"
-)
+var Version = "dev"
 
 func main() {
 	cmd := &cli.Command{
@@ -42,7 +38,7 @@ func main() {
 			)
 
 			if _, err := os.Stat("/var/run/docker.sock"); err != nil {
-				slog.Warn("Docker socket not found", "path", "/var/run/docker.sock")
+				slog.Debug("Docker socket not found", "path", "/var/run/docker.sock")
 			}
 			return ctx, nil
 		},

@@ -3,6 +3,8 @@ package policy
 
 import (
 	"context"
+	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
@@ -10,6 +12,44 @@ import (
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/google/go-containerregistry/pkg/name"
 )
+
+// Policy defines how aggressively to update container images.
+type Policy string
+
+const (
+	Digest Policy = "digest"
+	Patch  Policy = "patch"
+	Minor  Policy = "minor"
+	Major  Policy = "major"
+)
+
+func (p Policy) String() string { return string(p) }
+
+func (p Policy) IsValid() bool {
+	switch p {
+	case Digest, Patch, Minor, Major:
+		return true
+	}
+	return false
+}
+
+// Parse normalizes and validates a policy string, falling back to Digest.
+func Parse(raw string) Policy {
+	if p := Policy(strings.ToLower(strings.TrimSpace(raw))); p.IsValid() {
+		return p
+	}
+	slog.Warn("Unknown policy, defaulting to digest", "policy", raw)
+	return Digest
+}
+
+// ParseOr normalizes and validates a policy string, falling back to the given default.
+func ParseOr(raw string, fallback Policy) Policy {
+	if p := Policy(strings.ToLower(strings.TrimSpace(raw))); p.IsValid() {
+		return p
+	}
+	slog.Warn("Unknown container policy, using default", "policy", raw, "fallback", fallback)
+	return fallback
+}
 
 // FindUpdateTarget resolves the best available tag for a policy.
 func FindUpdateTarget(ctx context.Context, image string, policy Policy) (string, error) {
