@@ -234,6 +234,7 @@ func (u *Updater) recreate(ctx context.Context, image, id string) {
 			IPAMConfig: n.IPAMConfig,
 			Links:      n.Links,
 			Aliases:    n.Aliases,
+			GwPriority: n.GwPriority,
 			DriverOpts: n.DriverOpts,
 		}
 	}
