@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -39,6 +40,19 @@ func main() {
 
 			if _, err := os.Stat("/var/run/docker.sock"); err != nil {
 				slog.Debug("Docker socket not found", "path", "/var/run/docker.sock")
+			}
+
+			if os.Getenv("DOCKER_CONFIG") != "" {
+				return ctx, nil
+			}
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return ctx, nil
+			}
+			configPath := filepath.Join(home, ".docker", "config.json")
+			if _, err := os.Stat(configPath); os.IsNotExist(err) {
+				_ = os.MkdirAll(filepath.Join(home, ".docker"), 0o750)
+				_ = os.WriteFile(configPath, []byte(`{}`), 0o600)
 			}
 			return ctx, nil
 		},
