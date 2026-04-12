@@ -96,8 +96,19 @@ func (u *Updater) check(ctx context.Context) error {
 }
 
 func (u *Updater) update(ctx context.Context, c dockercontainer.Summary) {
+	name := "unknown"
+	if len(c.Names) > 0 {
+		name = strings.TrimPrefix(c.Names[0], "/")
+	}
+
 	if strings.HasPrefix(c.Image, "sha256:") {
-		slog.Debug("Skipping container — image referenced by digest only", "image", c.Image)
+		slog.Debug(
+			"Skipping container, image referenced by digest only",
+			"container",
+			name,
+			"image",
+			c.Image,
+		)
 		return
 	}
 
@@ -114,7 +125,9 @@ func (u *Updater) update(ctx context.Context, c dockercontainer.Summary) {
 		target, err := policy.FindUpdateTarget(ctx, c.Image, pol)
 		if err != nil {
 			slog.Warn(
-				"Skipping container — could not resolve update target",
+				"Could not resolve update target",
+				"container",
+				name,
 				"image",
 				c.Image,
 				"error",
@@ -123,58 +136,81 @@ func (u *Updater) update(ctx context.Context, c dockercontainer.Summary) {
 			return
 		}
 		if target == "" {
-			slog.Debug("No update available", "image", c.Image, "policy", pol)
+			slog.Debug("No update available", "container", name, "image", c.Image, "policy", pol)
 			return
 		}
 		if target != c.Image {
-			slog.Info("Found update", "from", c.Image, "to", target, "policy", pol)
+			slog.Info(
+				"Update found (new version)",
+				"container",
+				name,
+				"from",
+				c.Image,
+				"to",
+				target,
+				"policy",
+				pol,
+			)
 			targetImg = target
 		}
 	}
 
 	localDigestBefore, _ := u.getImageDigest(ctx, targetImg)
 	if err := u.pull(ctx, targetImg); err != nil {
-		slog.Warn("Pull failed", "image", targetImg, "error", err)
+		slog.Warn("Pull failed", "container", name, "image", targetImg, "error", err)
 		return
 	}
 
 	localDigestAfter, err := u.getImageDigest(ctx, targetImg)
 	if err != nil {
-		slog.Warn("Could not verify pulled image", "image", targetImg, "error", err)
+		slog.Warn(
+			"Could not verify pulled image digest",
+			"container",
+			name,
+			"image",
+			targetImg,
+			"error",
+			err,
+		)
 		return
 	}
 
 	// If the tag hasn't changed, and the digest hasn't changed, we're up to date
 	if targetImg == c.Image && localDigestBefore != "" && localDigestBefore == localDigestAfter {
-		slog.Debug("Already up to date", "image", targetImg)
+		slog.Debug("Already up to date", "container", name, "image", targetImg)
 		return
+	}
+
+	if targetImg == c.Image {
+		slog.Info("Update found (new digest)", "container", name, "image", targetImg)
 	}
 
 	// Defer self-updates to avoid crashing mid-run
 	if u.isSelf(c) {
-		slog.Info("Update available for orbitd itself — restart to apply")
+		slog.Info("Update available for orbitd itself, restart to apply", "container", name)
 		return
 	}
 
+	slog.Info("Updating container", "container", name, "image", targetImg)
 	u.recreate(ctx, targetImg, c.ID)
 }
 
 func (u *Updater) recreate(ctx context.Context, image, id string) {
 	oldC, err := container.FromID(ctx, u.docker, id)
 	if err != nil {
-		slog.Error("Failed to inspect container", "error", err)
+		slog.Error("Failed to inspect container", "id", id, "error", err)
 		return
 	}
 	info, err := oldC.Inspect(ctx)
 	if err != nil {
-		slog.Error("Failed to inspect container", "error", err)
+		slog.Error("Failed to inspect container", "id", id, "error", err)
 		return
 	}
 
 	name := strings.TrimPrefix(info.Container.Name, "/")
 
 	if !oldC.IsRunning() {
-		slog.Debug("Skipping container — not running", "container", name)
+		slog.Debug("Skipping container, not running", "container", name)
 		return
 	}
 
@@ -194,7 +230,7 @@ func (u *Updater) recreate(ctx context.Context, image, id string) {
 		slog.Error("Failed to rename container", "container", name, "error", err)
 		if err := oldC.Start(ctx); err != nil {
 			slog.Error(
-				"Failed to restart container — may need manual intervention",
+				"Failed to restart container, may need manual intervention",
 				"container",
 				name,
 				"error",
@@ -264,7 +300,7 @@ func (u *Updater) recreate(ctx context.Context, image, id string) {
 			NewName: name,
 		}); err != nil {
 			slog.Error(
-				"Rollback failed — container may need manual intervention",
+				"Rollback failed, container may need manual intervention",
 				"container",
 				name,
 				"error",
@@ -274,7 +310,7 @@ func (u *Updater) recreate(ctx context.Context, image, id string) {
 		}
 
 		if err := oldC.Start(ctx); err != nil {
-			slog.Error("Rollback failed — container is down", "container", name, "error", err)
+			slog.Error("Rollback failed, container is down", "container", name, "error", err)
 			return
 		}
 
