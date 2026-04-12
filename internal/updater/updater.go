@@ -14,8 +14,6 @@ import (
 	"github.com/docker/go-sdk/container"
 	"github.com/docker/go-sdk/image"
 	"github.com/docker/go-units"
-	"github.com/google/go-containerregistry/pkg/authn"
-	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/mizuchilabs/orbitd/internal/policy"
 	dockercontainer "github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
@@ -134,35 +132,22 @@ func (u *Updater) update(ctx context.Context, c dockercontainer.Summary) {
 		}
 	}
 
-	// Digest comparison only applies to same-tag updates (digest policy).
-	// For version bumps (targetImg != c.Image), always pull and recreate.
-	if targetImg == c.Image {
-		localDigest, _ := u.getImageDigest(ctx, targetImg)
-		if localDigest != "" {
-			if remote, err := crane.Digest(targetImg, crane.WithAuthFromKeychain(authn.DefaultKeychain)); err == nil &&
-				strings.HasSuffix(localDigest, remote) {
-				slog.Debug("Already up to date", "image", targetImg)
-				return
-			}
-		}
+	localDigestBefore, _ := u.getImageDigest(ctx, targetImg)
+	if err := u.pull(ctx, targetImg); err != nil {
+		slog.Warn("Pull failed", "image", targetImg, "error", err)
+		return
+	}
 
-		if err := u.pull(ctx, targetImg); err != nil {
-			slog.Warn("Pull failed", "image", targetImg, "error", err)
-			return
-		}
+	localDigestAfter, err := u.getImageDigest(ctx, targetImg)
+	if err != nil {
+		slog.Warn("Could not verify pulled image", "image", targetImg, "error", err)
+		return
+	}
 
-		if newDigest, err := u.getImageDigest(ctx, targetImg); err != nil {
-			slog.Warn("Could not verify pulled image", "image", targetImg, "error", err)
-			return
-		} else if localDigest != "" && localDigest == newDigest {
-			slog.Debug("Already up to date", "image", targetImg)
-			return
-		}
-	} else {
-		if err := u.pull(ctx, targetImg); err != nil {
-			slog.Warn("Pull failed", "image", targetImg, "error", err)
-			return
-		}
+	// If the tag hasn't changed, and the digest hasn't changed, we're up to date
+	if targetImg == c.Image && localDigestBefore != "" && localDigestBefore == localDigestAfter {
+		slog.Debug("Already up to date", "image", targetImg)
+		return
 	}
 
 	// Defer self-updates to avoid crashing mid-run
@@ -225,6 +210,17 @@ func (u *Updater) recreate(ctx context.Context, image, id string) {
 	// Clear auto-generated hostnames
 	if len(info.Container.ID) >= 12 && newConfig.Hostname == info.Container.ID[:12] {
 		newConfig.Hostname = ""
+	}
+
+	// Preserve anonymous volumes to prevent data loss
+	for _, m := range info.Container.Mounts {
+		if string(m.Type) == "volume" &&
+			len(m.Name) == 64 { // Docker assigns 64-char hex strings for anonymous volumes
+			info.Container.HostConfig.Binds = append(
+				info.Container.HostConfig.Binds,
+				fmt.Sprintf("%s:%s", m.Name, m.Destination),
+			)
+		}
 	}
 
 	// Strip operational network data to prevent conflicts
@@ -345,8 +341,14 @@ func (u *Updater) getImageDigest(ctx context.Context, image string) (string, err
 // by comparing the container ID prefix against our hostname (Docker sets
 // the hostname to the first 12 chars of the container ID by default).
 func (u *Updater) isSelf(c dockercontainer.Summary) bool {
-	if u.hostname == "" {
-		return false
+	if u.hostname != "" && strings.HasPrefix(c.ID, u.hostname) {
+		return true
 	}
-	return strings.HasPrefix(c.ID, u.hostname)
+	// Fallback check
+	for _, name := range c.Names {
+		if strings.Contains(name, "orbitd") {
+			return true
+		}
+	}
+	return false
 }
