@@ -36,15 +36,17 @@ func (u *Updater) updateSwarm(ctx context.Context, s swarm.Service) {
 	}
 
 	imageRef := s.Spec.TaskTemplate.ContainerSpec.Image
-	if imageRef == "" {
+	if imageRef == "" || strings.HasPrefix(imageRef, "sha256:") {
 		return
 	}
 
-	// Logic for resolving image and checking for updates
+	// Swarm image refs are usually format: repo:tag@sha256:digest
 	baseImage := strings.Split(imageRef, "@")[0]
-	if !strings.Contains(baseImage, ":") && strings.Contains(imageRef, "@") {
+
+	// If there is no tag (e.g., deployed purely by digest), we can't check for updates
+	if !strings.Contains(baseImage, ":") {
 		slog.Debug(
-			"Skipping service, image referenced by digest only",
+			"Skipping service, image has no trackable tag",
 			"service",
 			name,
 			"image",
@@ -52,25 +54,22 @@ func (u *Updater) updateSwarm(ctx context.Context, s swarm.Service) {
 		)
 		return
 	}
-	if strings.HasPrefix(imageRef, "sha256:") {
+
+	// Prevent self-updating loop (check the image, not the service name, to avoid false positives like "orbitdb")
+	if strings.Contains(baseImage, "orbitd") {
+		slog.Info("Update available for orbitd service, apply manually or restart", "service", name)
 		return
 	}
 
 	targetImg := baseImage
 	pol := u.Policy
 
-	// Defer self-updates
-	if strings.Contains(name, "orbitd") {
-		slog.Info("Update available for orbitd service, apply manually or restart", "service", name)
-		return
-	}
-
 	// Check for service-specific policy override
 	if raw, ok := s.Spec.Labels["orbitd.policy"]; ok {
 		pol = policy.ParseOr(raw, u.Policy)
 	}
 
-	// Resolve semver target
+	// Resolve semver target if not using standard digest policy
 	if pol != policy.Digest {
 		target, err := policy.FindUpdateTarget(ctx, baseImage, pol)
 		if err != nil {
@@ -105,7 +104,7 @@ func (u *Updater) updateSwarm(ctx context.Context, s swarm.Service) {
 		}
 	}
 
-	// Resolve remote digest to pin it
+	// Resolve remote digest using crane to see if the underlying image changed
 	digest, err := crane.Digest(targetImg,
 		crane.WithContext(ctx),
 		crane.WithAuthFromKeychain(authn.DefaultKeychain),
@@ -124,8 +123,6 @@ func (u *Updater) updateSwarm(ctx context.Context, s swarm.Service) {
 	}
 
 	newImage := targetImg + "@" + digest
-
-	// If the image ref is already this digest, we are up to date
 	if newImage == imageRef {
 		slog.Debug("Already up to date", "service", name, "image", newImage)
 		return
@@ -133,21 +130,18 @@ func (u *Updater) updateSwarm(ctx context.Context, s swarm.Service) {
 
 	if targetImg == baseImage {
 		slog.Info("Update found (new digest)", "service", name, "image", newImage)
+	} else {
+		slog.Info("Updating service", "service", name, "image", newImage)
 	}
 
-	slog.Info("Updating service", "service", name, "image", newImage)
-
-	// Clone the spec and update the image
-	spec := s.Spec
-	spec.TaskTemplate.ContainerSpec.Image = newImage
-
-	opts := dockerclient.ServiceUpdateOptions{
-		Version:       s.Version,
-		Spec:          spec,
-		QueryRegistry: true,
-	}
-
-	_, err = u.cli.ServiceUpdate(ctx, s.ID, opts)
+	// Apply the new digest
+	s.Spec.TaskTemplate.ContainerSpec.Image = newImage
+	_, err = u.cli.ServiceUpdate(ctx, s.ID, dockerclient.ServiceUpdateOptions{
+		Version:          s.Version,
+		Spec:             s.Spec,
+		QueryRegistry:    true,
+		RegistryAuthFrom: swarm.RegistryAuthFromPreviousSpec,
+	})
 	if err != nil {
 		slog.Error("Failed to update service", "service", name, "error", err)
 		return
