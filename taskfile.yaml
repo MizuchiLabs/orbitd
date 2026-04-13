@@ -1,25 +1,20 @@
 version: "3"
 
-output: prefixed
-
 env:
   CGO_ENABLED: 0
-  IMAGE_PROD: ghcr.io/mizuchilabs/orbitd
+  IMAGE: ghcr.io/mizuchilabs/orbitd
 
 tasks:
-  # 󰚰 Update deps
   update:
     desc: Update dependencies
     cmds:
       - go get -u ./...
 
-  #   Build
   build:
     desc: Build binary
     cmds:
       - go build -ldflags="-s -w" -trimpath -o bin/orbitd
 
-  # 󰉠  Lint / static checks
   lint:
     desc: Run go vet & lint
     cmds:
@@ -32,17 +27,12 @@ tasks:
   snapshot:
     desc: Build snapshot
     cmds:
-      - goreleaser --snapshot --clean --skip=validate
+      - goreleaser --snapshot --clean --skip=validate,sign,sbom,archive
+      - docker tag goreleaser.ko.local:latest $IMAGE:nightly
+      - grype $IMAGE:nightly
 
-  # 󱓞  Release
-  release:
-    desc: Build release
-    deps: [lint]
+  snapshot:push:
+    desc: Build and push snapshot to registry
+    deps: [snapshot]
     cmds:
-      - goreleaser release --clean --skip=validate
-
-  docker:push:
-    desc: Build and push container to registry
-    cmds:
-      - goreleaser release --clean --skip=validate,sign,sbom,archive
-      - grype $IMAGE_PROD
+      - docker push $IMAGE:nightly
