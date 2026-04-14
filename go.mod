@@ -1,6 +1,6 @@
 module github.com/mizuchilabs/orbitd
 
-go 1.26.2
+go 1.26.1
 
 require (
 	github.com/Masterminds/semver/v3 v3.4.0
