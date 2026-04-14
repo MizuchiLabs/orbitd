@@ -23,7 +23,6 @@ Orbitd monitors your containers and automatically updates them when new images a
 ## Quick Start
 
 ```yaml
-# docker-compose.yml
 services:
   orbitd:
     image: ghcr.io/mizuchilabs/orbitd:latest
@@ -34,6 +33,21 @@ services:
 ```
 
 That's it. Orbitd will check all containers every 12 hours and update them when new digests are available.
+
+Since v0.1.9, you can also run orbitd in docker swarm:
+
+```yaml
+services:
+  orbitd:
+    image: ghcr.io/mizuchilabs/orbitd:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+```
 
 ## Configuration
 
