@@ -3,6 +3,7 @@ package updater
 import (
 	"context"
 	"log/slog"
+	"sync"
 
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
@@ -23,13 +24,25 @@ func (u *Updater) checkSwarm(ctx context.Context) {
 	}
 
 	slog.Debug("Found services", "count", len(res.Items))
-	for _, s := range res.Items {
+
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 3)
+	for _, c := range res.Items {
 		if ctx.Err() != nil {
-			return
+			break
 		}
-		u.updateSwarm(ctx, s)
+
+		sem <- struct{}{}
+		wg.Go(func() {
+			defer func() { <-sem }()
+			u.updateSwarm(ctx, c)
+		})
 	}
-	u.pruneImagesDocker(ctx)
+
+	wg.Wait()
+	if ctx.Err() == nil {
+		u.pruneImagesDocker(ctx)
+	}
 }
 
 func (u *Updater) updateSwarm(ctx context.Context, s swarm.Service) {

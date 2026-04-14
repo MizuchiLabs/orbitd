@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/docker/go-sdk/container"
@@ -30,13 +31,25 @@ func (u *Updater) checkDocker(ctx context.Context) {
 	}
 
 	slog.Debug("Found containers", "count", len(res.Items))
+
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 3) // Limit concurrency to 3 simultaneous updates
 	for _, c := range res.Items {
 		if ctx.Err() != nil {
-			return
+			break
 		}
-		u.updateDocker(ctx, c)
+
+		sem <- struct{}{}
+		wg.Go(func() {
+			defer func() { <-sem }()
+			u.updateDocker(ctx, c)
+		})
 	}
-	u.pruneImagesDocker(ctx) // run once per cycle
+
+	wg.Wait()
+	if ctx.Err() == nil {
+		u.pruneImagesDocker(ctx)
+	}
 }
 
 func (u *Updater) updateDocker(ctx context.Context, c dockercontainer.Summary) {
