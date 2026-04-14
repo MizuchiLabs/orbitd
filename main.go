@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"log/slog"
 	"os"
@@ -15,20 +16,20 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-var Version = "dev"
+var (
+	Version = "dev"
+	Commit  = "none"
+	Date    = "unknown"
+)
 
 func main() {
 	cmd := &cli.Command{
 		EnableShellCompletion: true,
 		Suggest:               true,
 		Name:                  "orbitd",
-		Version:               Version,
-		Usage:                 "orbitd [command]",
-		Description: `Orbitd is a lightweight container update daemon that automatically keeps your Docker containers up-to-date.
-
-   It monitors running containers for new image versions and seamlessly recreates them with
-   the latest digest while preserving all configuration, networks, volumes, and labels.
-   Perfect for self-hosted services and Docker Compose setups.`,
+		Version:               fmt.Sprintf("%s (commit: %s, built: %s)", Version, Commit, Date),
+		Usage:                 "watching your containers",
+		Description:           `A lightweight daemon that automatically keeps your Docker containers up-to-date.`,
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
 			level := slog.LevelInfo
 			if cmd.Bool("debug") {
