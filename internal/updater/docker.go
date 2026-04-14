@@ -12,7 +12,6 @@ import (
 	"github.com/docker/go-sdk/container"
 	"github.com/docker/go-sdk/image"
 	"github.com/docker/go-units"
-	"github.com/mizuchilabs/orbitd/internal/policy"
 	dockercontainer "github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	dockerclient "github.com/moby/moby/client"
@@ -41,70 +40,44 @@ func (u *Updater) checkDocker(ctx context.Context) {
 }
 
 func (u *Updater) updateDocker(ctx context.Context, c dockercontainer.Summary) {
-	if c.Image == "" || strings.HasPrefix(c.Image, "sha256:") {
+	if !hasNamedImage(c.Image) {
 		return
 	}
 
-	repo, tag, _, err := policy.ParseImage(c.Image)
+	res, err := u.resolveTargetImage(ctx, c.Image, c.Labels)
 	if err != nil {
-		slog.Warn("Failed to parse image reference", "image", c.Image, "error", err)
+		slog.Warn("Could not resolve target image", "image", c.Image, "error", err)
+		return
+	}
+	if res.target != res.current {
+		slog.Info("Update found", "from", res.current, "to", res.target, "policy", res.policy)
+	}
+
+	if err := u.pullDocker(ctx, res.target); err != nil {
+		slog.Warn("Pull failed", "image", res.target, "error", err)
 		return
 	}
 
-	// Normalize image to ensure consistent parsing/pulling behavior
-	normalizedImg := repo + ":" + tag
-	targetImg := normalizedImg
-	pol := u.Policy
-
-	// Check for container-specific policy override
-	if raw, ok := c.Labels["orbitd.policy"]; ok {
-		pol = policy.ParseOr(raw, u.Policy)
-	}
-
-	// Resolve semver target
-	if pol != policy.Digest {
-		target, err := policy.FindUpdateTarget(ctx, targetImg, pol)
-		if err != nil {
-			slog.Warn("Could not resolve update target", "image", targetImg, "error", err)
-			return
-		}
-		if target == "" {
-			slog.Debug("No update available", "image", targetImg, "policy", pol)
-			return
-		}
-		if target != targetImg {
-			slog.Info("Update found", "from", targetImg, "to", target, "policy", pol)
-			targetImg = target
-		}
-	}
-
-	localDigestBefore, _ := u.getImageDigestDocker(ctx, targetImg)
-	if err := u.pullDocker(ctx, targetImg); err != nil {
-		slog.Warn("Pull failed", "image", targetImg, "error", err)
-		return
-	}
-
-	localDigestAfter, err := u.getImageDigestDocker(ctx, targetImg)
+	targetImage, err := u.cli.ImageInspect(ctx, res.target)
 	if err != nil {
-		slog.Warn("Could not verify pulled image digest", "image", targetImg, "error", err)
+		slog.Warn("Could not verify pulled image", "image", res.target, "error", err)
 		return
 	}
 
-	// If the tag hasn't changed, and the digest hasn't changed, we're up to date
-	if targetImg == normalizedImg && localDigestBefore != "" &&
-		localDigestBefore == localDigestAfter {
-		slog.Debug("Already up to date", "image", targetImg)
+	// Compare against the image backing the running container
+	if !isNewImage(c.ImageID, targetImage.ID) {
+		slog.Debug("Already up to date", "image", res.target)
 		return
 	}
 
-	// Defer self-updates to avoid crashing mid-run
+	// Skip recreation
 	if u.isSelfDocker(c) {
 		slog.Info("Update available for orbitd, restart to apply")
 		return
 	}
 
-	slog.Info("Updating container", "image", targetImg)
-	u.recreateDocker(ctx, targetImg, c.ID)
+	slog.Info("Updating container", "image", res.target)
+	u.recreateDocker(ctx, res.target, c.ID)
 }
 
 func (u *Updater) recreateDocker(ctx context.Context, image, id string) {
@@ -116,6 +89,10 @@ func (u *Updater) recreateDocker(ctx context.Context, image, id string) {
 	info, err := oldC.Inspect(ctx)
 	if err != nil {
 		slog.Error("Failed to inspect container", "id", id, "error", err)
+		return
+	}
+	if info.Container.Config == nil || info.Container.HostConfig == nil {
+		slog.Error("Container metadata incomplete", "container", id)
 		return
 	}
 
@@ -132,7 +109,7 @@ func (u *Updater) recreateDocker(ctx context.Context, image, id string) {
 	}
 
 	// Free up container name
-	backupName := name + "-orbitd-old"
+	backupName := name + "-orbitd-old-" + id[:12]
 	if _, err := u.cli.ContainerRename(
 		ctx,
 		id,
@@ -180,13 +157,15 @@ func (u *Updater) recreateDocker(ctx context.Context, image, id string) {
 
 	// Strip operational network data to prevent conflicts
 	endpointsConfig := make(map[string]*network.EndpointSettings)
-	for name, n := range info.Container.NetworkSettings.Networks {
-		endpointsConfig[name] = &network.EndpointSettings{
-			IPAMConfig: n.IPAMConfig,
-			Links:      n.Links,
-			Aliases:    n.Aliases,
-			GwPriority: n.GwPriority,
-			DriverOpts: n.DriverOpts,
+	if info.Container.NetworkSettings != nil {
+		for name, n := range info.Container.NetworkSettings.Networks {
+			endpointsConfig[name] = &network.EndpointSettings{
+				IPAMConfig: n.IPAMConfig,
+				Links:      n.Links,
+				Aliases:    n.Aliases,
+				GwPriority: n.GwPriority,
+				DriverOpts: n.DriverOpts,
+			}
 		}
 	}
 
@@ -277,19 +256,6 @@ func (u *Updater) pruneImagesDocker(ctx context.Context) {
 			"reclaimed", units.HumanSize(float64(res.Report.SpaceReclaimed)),
 		)
 	}
-}
-
-func (u *Updater) getImageDigestDocker(ctx context.Context, image string) (string, error) {
-	info, err := u.cli.ImageInspect(ctx, image)
-	if err != nil {
-		return "", err
-	}
-
-	// Prefer RepoDigests
-	if len(info.RepoDigests) > 0 {
-		return info.RepoDigests[0], nil
-	}
-	return info.ID, nil
 }
 
 // isSelfDocker checks whether this container is the orbitd instance itself

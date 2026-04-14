@@ -3,11 +3,9 @@ package updater
 import (
 	"context"
 	"log/slog"
-	"strings"
 
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
-	"github.com/mizuchilabs/orbitd/internal/policy"
 	"github.com/moby/moby/api/types/swarm"
 	dockerclient "github.com/moby/moby/client"
 )
@@ -26,8 +24,12 @@ func (u *Updater) checkSwarm(ctx context.Context) {
 
 	slog.Debug("Found services", "count", len(res.Items))
 	for _, s := range res.Items {
+		if ctx.Err() != nil {
+			return
+		}
 		u.updateSwarm(ctx, s)
 	}
+	u.pruneImagesDocker(ctx)
 }
 
 func (u *Updater) updateSwarm(ctx context.Context, s swarm.Service) {
@@ -36,67 +38,50 @@ func (u *Updater) updateSwarm(ctx context.Context, s swarm.Service) {
 	}
 
 	imageRef := s.Spec.TaskTemplate.ContainerSpec.Image
-	if imageRef == "" || strings.HasPrefix(imageRef, "sha256:") {
+	if !hasNamedImage(imageRef) {
 		return
 	}
 
-	repo, tag, _, err := policy.ParseImage(imageRef)
+	resolved, err := u.resolveTargetImage(ctx, imageRef, s.Spec.Labels)
 	if err != nil {
-		slog.Warn("Failed to parse image reference", "image", imageRef, "error", err)
+		slog.Warn("Could not resolve target image", "image", imageRef, "error", err)
 		return
 	}
-
-	baseImage := repo + ":" + tag
-	targetImg := baseImage
-
-	// Check for service-specific policy override
-	pol := u.Policy
-	if raw, ok := s.Spec.Labels["orbitd.policy"]; ok {
-		pol = policy.ParseOr(raw, u.Policy)
-	}
-
-	// Resolve semver target if not using standard digest policy
-	if pol != policy.Digest {
-		target, err := policy.FindUpdateTarget(ctx, baseImage, pol)
-		if err != nil {
-			slog.Warn("Could not resolve update target", "image", baseImage, "error", err)
-			return
-		}
-		if target == "" {
-			slog.Debug("No update available", "image", baseImage, "policy", pol)
-			return
-		}
-		if target != baseImage {
-			slog.Info("Update found", "from", baseImage, "to", target, "policy", pol)
-			targetImg = target
-		}
+	if resolved.target != resolved.current {
+		slog.Info(
+			"Update found",
+			"from",
+			resolved.current,
+			"to",
+			resolved.target,
+			"policy",
+			resolved.policy,
+		)
 	}
 
 	// Resolve remote digest using crane to see if the underlying image changed
-	digest, err := crane.Digest(targetImg,
+	digest, err := crane.Digest(resolved.target,
 		crane.WithContext(ctx),
 		crane.WithAuthFromKeychain(authn.DefaultKeychain),
 	)
 	if err != nil {
-		slog.Warn("Could not resolve remote digest", "image", targetImg, "error", err)
+		slog.Warn("Could not resolve remote digest", "image", resolved.target, "error", err)
 		return
 	}
 
-	newImage := targetImg + "@" + digest
-	if newImage == imageRef {
-		slog.Debug("Already up to date", "image", newImage)
+	if !isNewImage(imageRef, digest) {
+		slog.Debug("Already up to date", "service", s.Spec.Name, "image", imageRef)
 		return
 	}
 
+	newImage := pinImageDigest(resolved.target, digest)
 	slog.Info("Updating service", "service", s.Spec.Name, "image", newImage)
 
-	// Apply the new digest and force an update
+	// Update service
 	s.Spec.TaskTemplate.ContainerSpec.Image = newImage
-	s.Spec.TaskTemplate.ForceUpdate++
 	_, err = u.cli.ServiceUpdate(ctx, s.ID, dockerclient.ServiceUpdateOptions{
 		Version:          s.Version,
 		Spec:             s.Spec,
-		QueryRegistry:    true,
 		RegistryAuthFrom: swarm.RegistryAuthFromPreviousSpec,
 	})
 	if err != nil {
