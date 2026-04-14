@@ -133,8 +133,9 @@ func (u *Updater) updateSwarm(ctx context.Context, s swarm.Service) {
 		slog.Info("Updating service", "service", name, "image", newImage)
 	}
 
-	// Apply the new digest
+	// Apply the new digest and force an update
 	s.Spec.TaskTemplate.ContainerSpec.Image = newImage
+	s.Spec.TaskTemplate.ForceUpdate++
 	_, err = u.cli.ServiceUpdate(ctx, s.ID, dockerclient.ServiceUpdateOptions{
 		Version:          s.Version,
 		Spec:             s.Spec,
