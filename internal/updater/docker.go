@@ -41,25 +41,13 @@ func (u *Updater) checkDocker(ctx context.Context) {
 }
 
 func (u *Updater) updateDocker(ctx context.Context, c dockercontainer.Summary) {
-	name := "unknown"
-	if len(c.Names) > 0 {
-		name = strings.TrimPrefix(c.Names[0], "/")
-	}
-
-	if strings.HasPrefix(c.Image, "sha256:") {
-		slog.Debug(
-			"Skipping container, image referenced by digest only",
-			"container",
-			name,
-			"image",
-			c.Image,
-		)
+	if c.Image == "" || strings.HasPrefix(c.Image, "sha256:") {
 		return
 	}
 
 	repo, tag, _, err := policy.ParseImage(c.Image)
 	if err != nil {
-		slog.Warn("Failed to parse image reference", "container", name, "image", c.Image, "error", err)
+		slog.Warn("Failed to parse image reference", "image", c.Image, "error", err)
 		return
 	}
 
@@ -77,74 +65,45 @@ func (u *Updater) updateDocker(ctx context.Context, c dockercontainer.Summary) {
 	if pol != policy.Digest {
 		target, err := policy.FindUpdateTarget(ctx, targetImg, pol)
 		if err != nil {
-			slog.Warn(
-				"Could not resolve update target",
-				"container",
-				name,
-				"image",
-				targetImg,
-				"error",
-				err,
-			)
+			slog.Warn("Could not resolve update target", "image", targetImg, "error", err)
 			return
 		}
 		if target == "" {
-			slog.Debug("No update available", "container", name, "image", targetImg, "policy", pol)
+			slog.Debug("No update available", "image", targetImg, "policy", pol)
 			return
 		}
 		if target != targetImg {
-			slog.Info(
-				"Update found (new version)",
-				"container",
-				name,
-				"from",
-				targetImg,
-				"to",
-				target,
-				"policy",
-				pol,
-			)
+			slog.Info("Update found", "from", targetImg, "to", target, "policy", pol)
 			targetImg = target
 		}
 	}
 
 	localDigestBefore, _ := u.getImageDigestDocker(ctx, targetImg)
 	if err := u.pullDocker(ctx, targetImg); err != nil {
-		slog.Warn("Pull failed", "container", name, "image", targetImg, "error", err)
+		slog.Warn("Pull failed", "image", targetImg, "error", err)
 		return
 	}
 
 	localDigestAfter, err := u.getImageDigestDocker(ctx, targetImg)
 	if err != nil {
-		slog.Warn(
-			"Could not verify pulled image digest",
-			"container",
-			name,
-			"image",
-			targetImg,
-			"error",
-			err,
-		)
+		slog.Warn("Could not verify pulled image digest", "image", targetImg, "error", err)
 		return
 	}
 
 	// If the tag hasn't changed, and the digest hasn't changed, we're up to date
-	if targetImg == normalizedImg && localDigestBefore != "" && localDigestBefore == localDigestAfter {
-		slog.Debug("Already up to date", "container", name, "image", targetImg)
+	if targetImg == normalizedImg && localDigestBefore != "" &&
+		localDigestBefore == localDigestAfter {
+		slog.Debug("Already up to date", "image", targetImg)
 		return
-	}
-
-	if targetImg == normalizedImg {
-		slog.Info("Update found (new digest)", "container", name, "image", targetImg)
 	}
 
 	// Defer self-updates to avoid crashing mid-run
 	if u.isSelfDocker(c) {
-		slog.Info("Update available for orbitd itself, restart to apply", "container", name)
+		slog.Info("Update available for orbitd, restart to apply")
 		return
 	}
 
-	slog.Info("Updating container", "container", name, "image", targetImg)
+	slog.Info("Updating container", "image", targetImg)
 	u.recreateDocker(ctx, targetImg, c.ID)
 }
 
@@ -161,7 +120,6 @@ func (u *Updater) recreateDocker(ctx context.Context, image, id string) {
 	}
 
 	name := strings.TrimPrefix(info.Container.Name, "/")
-
 	if !oldC.IsRunning() {
 		slog.Debug("Skipping container, not running", "container", name)
 		return

@@ -31,7 +31,6 @@ func (u *Updater) checkSwarm(ctx context.Context) {
 }
 
 func (u *Updater) updateSwarm(ctx context.Context, s swarm.Service) {
-	name := s.Spec.Name
 	if s.Spec.TaskTemplate.ContainerSpec == nil {
 		return
 	}
@@ -41,29 +40,17 @@ func (u *Updater) updateSwarm(ctx context.Context, s swarm.Service) {
 		return
 	}
 
-	repo, tag, shortName, err := policy.ParseImage(imageRef)
+	repo, tag, _, err := policy.ParseImage(imageRef)
 	if err != nil {
-		slog.Warn(
-			"Failed to parse image reference",
-			"service",
-			name,
-			"image",
-			imageRef,
-			"error",
-			err,
-		)
+		slog.Warn("Failed to parse image reference", "image", imageRef, "error", err)
 		return
-	}
-
-	if shortName == "orbitd" {
-		slog.Debug("Processing self-update for orbitd service", "service", name)
 	}
 
 	baseImage := repo + ":" + tag
 	targetImg := baseImage
-	pol := u.Policy
 
 	// Check for service-specific policy override
+	pol := u.Policy
 	if raw, ok := s.Spec.Labels["orbitd.policy"]; ok {
 		pol = policy.ParseOr(raw, u.Policy)
 	}
@@ -72,33 +59,15 @@ func (u *Updater) updateSwarm(ctx context.Context, s swarm.Service) {
 	if pol != policy.Digest {
 		target, err := policy.FindUpdateTarget(ctx, baseImage, pol)
 		if err != nil {
-			slog.Warn(
-				"Could not resolve update target",
-				"service",
-				name,
-				"image",
-				baseImage,
-				"error",
-				err,
-			)
+			slog.Warn("Could not resolve update target", "image", baseImage, "error", err)
 			return
 		}
 		if target == "" {
-			slog.Debug("No update available", "service", name, "image", baseImage, "policy", pol)
+			slog.Debug("No update available", "image", baseImage, "policy", pol)
 			return
 		}
 		if target != baseImage {
-			slog.Info(
-				"Update found (new version)",
-				"service",
-				name,
-				"from",
-				baseImage,
-				"to",
-				target,
-				"policy",
-				pol,
-			)
+			slog.Info("Update found", "from", baseImage, "to", target, "policy", pol)
 			targetImg = target
 		}
 	}
@@ -109,29 +78,17 @@ func (u *Updater) updateSwarm(ctx context.Context, s swarm.Service) {
 		crane.WithAuthFromKeychain(authn.DefaultKeychain),
 	)
 	if err != nil {
-		slog.Warn(
-			"Could not resolve remote digest",
-			"service",
-			name,
-			"image",
-			targetImg,
-			"error",
-			err,
-		)
+		slog.Warn("Could not resolve remote digest", "image", targetImg, "error", err)
 		return
 	}
 
 	newImage := targetImg + "@" + digest
 	if newImage == imageRef {
-		slog.Debug("Already up to date", "service", name, "image", newImage)
+		slog.Debug("Already up to date", "image", newImage)
 		return
 	}
 
-	if targetImg == baseImage {
-		slog.Info("Update found (new digest)", "service", name, "image", newImage)
-	} else {
-		slog.Info("Updating service", "service", name, "image", newImage)
-	}
+	slog.Info("Updating service", "service", s.Spec.Name, "image", newImage)
 
 	// Apply the new digest and force an update
 	s.Spec.TaskTemplate.ContainerSpec.Image = newImage
@@ -143,8 +100,7 @@ func (u *Updater) updateSwarm(ctx context.Context, s swarm.Service) {
 		RegistryAuthFrom: swarm.RegistryAuthFromPreviousSpec,
 	})
 	if err != nil {
-		slog.Error("Failed to update service", "service", name, "error", err)
+		slog.Error("Failed to update service", "service", s.Spec.Name, "error", err)
 		return
 	}
-	slog.Info("Service updated successfully", "service", name)
 }
