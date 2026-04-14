@@ -29,7 +29,6 @@ func main() {
 		Name:                  "orbitd",
 		Version:               fmt.Sprintf("%s (commit: %s, built: %s)", Version, Commit, Date),
 		Usage:                 "watching your containers",
-		Description:           `A lightweight daemon that automatically keeps your Docker containers up-to-date.`,
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
 			level := slog.LevelInfo
 			if cmd.Bool("debug") {
@@ -113,6 +112,4 @@ func main() {
 	if err := cmd.Run(ctx, os.Args); err != nil {
 		log.Fatal(err)
 	}
-
-	slog.Info("Shutting down...")
 }
