@@ -57,7 +57,7 @@ func FindUpdateTarget(ctx context.Context, image string, policy Policy) (string,
 		return image, nil // Keep current tag
 	}
 
-	repo, tag, _, err := ParseImage(image)
+	repo, tag, err := ParseImage(image)
 	if err != nil {
 		return "", err
 	}
@@ -139,24 +139,19 @@ func isAllowed(v, current *semver.Version, policy Policy) bool {
 // ParseImage parses a Docker image string and returns its repository, tag, and short name.
 // It explicitly strips any trailing digest (e.g. @sha256:...) before parsing to ensure
 // the tag information is not lost.
-func ParseImage(img string) (repo, tag, shortName string, err error) {
+func ParseImage(img string) (repo, tag string, err error) {
 	// Strip digest to keep the tag intact (go-containerregistry discards tags if a digest is present)
 	baseImg, _, _ := strings.Cut(img, "@")
 
 	ref, err := name.ParseReference(baseImg, name.WeakValidation)
 	if err != nil {
-		return "", "", "", err
+		return "", "", err
 	}
 
 	repo = ref.Context().String()
-
-	repoPath := ref.Context().RepositoryStr()
-	parts := strings.Split(repoPath, "/")
-	shortName = parts[len(parts)-1]
-
 	if t, ok := ref.(name.Tag); ok {
-		return repo, t.TagStr(), shortName, nil
+		return repo, t.TagStr(), nil
 	}
 
-	return repo, "latest", shortName, nil
+	return repo, "latest", nil
 }

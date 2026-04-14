@@ -81,11 +81,10 @@ func TestParseImage(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.image, func(t *testing.T) {
-			repo, tag, short, err := ParseImage(tc.image)
+			repo, tag, err := ParseImage(tc.image)
 			assert.NoError(t, err)
 			assert.Equal(t, tc.expectedRepo, repo)
 			assert.Equal(t, tc.expectedTag, tag)
-			assert.Equal(t, tc.expectedShort, short)
 		})
 	}
 }
