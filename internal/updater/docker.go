@@ -30,7 +30,11 @@ func (u *Updater) checkDocker(ctx context.Context) {
 		return
 	}
 
+	slog.Debug("Found containers", "count", len(res.Items))
 	for _, c := range res.Items {
+		if ctx.Err() != nil {
+			return
+		}
 		u.updateDocker(ctx, c)
 	}
 	u.pruneImagesDocker(ctx) // run once per cycle
@@ -53,7 +57,15 @@ func (u *Updater) updateDocker(ctx context.Context, c dockercontainer.Summary) {
 		return
 	}
 
-	targetImg := c.Image
+	repo, tag, _, err := policy.ParseImage(c.Image)
+	if err != nil {
+		slog.Warn("Failed to parse image reference", "container", name, "image", c.Image, "error", err)
+		return
+	}
+
+	// Normalize image to ensure consistent parsing/pulling behavior
+	normalizedImg := repo + ":" + tag
+	targetImg := normalizedImg
 	pol := u.Policy
 
 	// Check for container-specific policy override
@@ -63,30 +75,30 @@ func (u *Updater) updateDocker(ctx context.Context, c dockercontainer.Summary) {
 
 	// Resolve semver target
 	if pol != policy.Digest {
-		target, err := policy.FindUpdateTarget(ctx, c.Image, pol)
+		target, err := policy.FindUpdateTarget(ctx, targetImg, pol)
 		if err != nil {
 			slog.Warn(
 				"Could not resolve update target",
 				"container",
 				name,
 				"image",
-				c.Image,
+				targetImg,
 				"error",
 				err,
 			)
 			return
 		}
 		if target == "" {
-			slog.Debug("No update available", "container", name, "image", c.Image, "policy", pol)
+			slog.Debug("No update available", "container", name, "image", targetImg, "policy", pol)
 			return
 		}
-		if target != c.Image {
+		if target != targetImg {
 			slog.Info(
 				"Update found (new version)",
 				"container",
 				name,
 				"from",
-				c.Image,
+				targetImg,
 				"to",
 				target,
 				"policy",
@@ -117,12 +129,12 @@ func (u *Updater) updateDocker(ctx context.Context, c dockercontainer.Summary) {
 	}
 
 	// If the tag hasn't changed, and the digest hasn't changed, we're up to date
-	if targetImg == c.Image && localDigestBefore != "" && localDigestBefore == localDigestAfter {
+	if targetImg == normalizedImg && localDigestBefore != "" && localDigestBefore == localDigestAfter {
 		slog.Debug("Already up to date", "container", name, "image", targetImg)
 		return
 	}
 
-	if targetImg == c.Image {
+	if targetImg == normalizedImg {
 		slog.Info("Update found (new digest)", "container", name, "image", targetImg)
 	}
 
@@ -191,12 +203,20 @@ func (u *Updater) recreateDocker(ctx context.Context, image, id string) {
 
 	// Preserve anonymous volumes to prevent data loss
 	for _, m := range info.Container.Mounts {
-		if string(m.Type) == "volume" &&
-			len(m.Name) == 64 { // Docker assigns 64-char hex strings for anonymous volumes
-			info.Container.HostConfig.Binds = append(
-				info.Container.HostConfig.Binds,
-				fmt.Sprintf("%s:%s", m.Name, m.Destination),
-			)
+		if string(m.Type) == "volume" && m.Name != "" {
+			isAnonymous := true
+			for _, b := range info.Container.HostConfig.Binds {
+				if strings.HasPrefix(b, m.Name+":") {
+					isAnonymous = false
+					break
+				}
+			}
+			if isAnonymous {
+				info.Container.HostConfig.Binds = append(
+					info.Container.HostConfig.Binds,
+					fmt.Sprintf("%s:%s", m.Name, m.Destination),
+				)
+			}
 		}
 	}
 
@@ -285,9 +305,9 @@ func (u *Updater) pruneImagesDocker(ctx context.Context) {
 		return
 	}
 
-	res, err := u.cli.ImagePrune(ctx, dockerclient.ImagePruneOptions{
-		Filters: dockerclient.Filters{}.Add("dangling", "true"),
-	})
+	filters := dockerclient.Filters{}
+	filters.Add("dangling", "true")
+	res, err := u.cli.ImagePrune(ctx, dockerclient.ImagePruneOptions{Filters: filters})
 	if err != nil {
 		slog.Warn("Image cleanup failed", "error", err)
 		return

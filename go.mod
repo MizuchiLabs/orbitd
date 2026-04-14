@@ -11,6 +11,7 @@ require (
 	github.com/google/go-containerregistry v0.21.5
 	github.com/moby/moby/api v1.54.1
 	github.com/moby/moby/client v0.4.0
+	github.com/stretchr/testify v1.11.1
 	github.com/urfave/cli/v3 v3.8.0
 )
 
@@ -51,7 +52,6 @@ require (
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
-	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/vbatts/tar-split v0.12.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.68.0 // indirect

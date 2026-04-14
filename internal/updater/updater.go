@@ -43,7 +43,6 @@ func New(ctx context.Context, cmd *cli.Command) error {
 	// Handle shutdown
 	go func() {
 		<-ctx.Done()
-		slog.Info("Shutting down")
 		_ = cli.Close()
 	}()
 	return updater.Start(ctx)
@@ -62,7 +61,14 @@ func (u *Updater) Start(ctx context.Context) error {
 		mode = "swarm"
 	}
 
-	slog.Info("Starting orbitd", "mode", mode, "interval", u.Interval, "policy", u.Policy)
+	slog.Info("Starting orbitd", "interval", u.Interval, "mode", mode, "policy", u.Policy)
+
+	// Initial check
+	if isSwarm {
+		u.checkSwarm(ctx)
+	} else {
+		u.checkDocker(ctx)
+	}
 
 	ticker := time.NewTicker(u.Interval)
 	defer ticker.Stop()

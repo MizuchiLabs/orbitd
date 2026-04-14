@@ -39,7 +39,7 @@ func main() {
 			)
 
 			if _, err := os.Stat("/var/run/docker.sock"); err != nil {
-				slog.Debug("Docker socket not found", "path", "/var/run/docker.sock")
+				slog.Warn("Docker socket not found", "path", "/var/run/docker.sock")
 			}
 
 			if os.Getenv("DOCKER_CONFIG") != "" {
@@ -112,4 +112,6 @@ func main() {
 	if err := cmd.Run(ctx, os.Args); err != nil {
 		log.Fatal(err)
 	}
+
+	slog.Info("Shutting down...")
 }

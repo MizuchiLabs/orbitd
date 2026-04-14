@@ -24,6 +24,7 @@ func (u *Updater) checkSwarm(ctx context.Context) {
 		return
 	}
 
+	slog.Debug("Found services", "count", len(res.Items))
 	for _, s := range res.Items {
 		u.updateSwarm(ctx, s)
 	}
@@ -40,27 +41,25 @@ func (u *Updater) updateSwarm(ctx context.Context, s swarm.Service) {
 		return
 	}
 
-	// Swarm image refs are usually format: repo:tag@sha256:digest
-	baseImage := strings.Split(imageRef, "@")[0]
-
-	// If there is no tag (e.g., deployed purely by digest), we can't check for updates
-	if !strings.Contains(baseImage, ":") {
-		slog.Debug(
-			"Skipping service, image has no trackable tag",
+	repo, tag, shortName, err := policy.ParseImage(imageRef)
+	if err != nil {
+		slog.Warn(
+			"Failed to parse image reference",
 			"service",
 			name,
 			"image",
 			imageRef,
+			"error",
+			err,
 		)
 		return
 	}
 
-	// Prevent self-updating loop (check the image, not the service name, to avoid false positives like "orbitdb")
-	if strings.Contains(baseImage, "orbitd") {
-		slog.Info("Update available for orbitd service, apply manually or restart", "service", name)
-		return
+	if shortName == "orbitd" {
+		slog.Debug("Processing self-update for orbitd service", "service", name)
 	}
 
+	baseImage := repo + ":" + tag
 	targetImg := baseImage
 	pol := u.Policy
 
