@@ -65,7 +65,7 @@ func (u *Updater) updateDocker(ctx context.Context, c dockercontainer.Summary) {
 	}
 
 	// Compare against the image backing the running container
-	if !isNewImage(c.ImageID, targetImage.ID) {
+	if !isNewDockerImage(c.ImageID, targetImage.ID) {
 		slog.Debug("Already up to date", "image", res.target)
 		return
 	}
@@ -93,6 +93,10 @@ func (u *Updater) recreateDocker(ctx context.Context, image, id string) {
 	}
 	if info.Container.Config == nil || info.Container.HostConfig == nil {
 		slog.Error("Container metadata incomplete", "container", id)
+		return
+	}
+	if info.Container.HostConfig.AutoRemove {
+		slog.Warn("Skipping container with AutoRemove (--rm) enabled", "container", id)
 		return
 	}
 
@@ -256,6 +260,13 @@ func (u *Updater) pruneImagesDocker(ctx context.Context) {
 			"reclaimed", units.HumanSize(float64(res.Report.SpaceReclaimed)),
 		)
 	}
+}
+
+func isNewDockerImage(current, target string) bool {
+	if current == "" || target == "" {
+		return true
+	}
+	return current != target
 }
 
 // isSelfDocker checks whether this container is the orbitd instance itself

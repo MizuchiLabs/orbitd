@@ -59,15 +59,3 @@ func imageDigest(imageRef string) string {
 func pinImageDigest(imageRef, digest string) string {
 	return imageRef + "@" + digest
 }
-
-func isNewImage(base, target string) bool {
-	if base == "" || target == "" {
-		return true
-	}
-
-	// Docker compares image IDs, Swarm compares pinned digests.
-	if strings.Contains(base, "@") {
-		return imageDigest(base) != target
-	}
-	return base != target
-}

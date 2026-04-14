@@ -69,7 +69,7 @@ func (u *Updater) updateSwarm(ctx context.Context, s swarm.Service) {
 		return
 	}
 
-	if !isNewImage(imageRef, digest) {
+	if !isNewSwarmImage(imageRef, digest) {
 		slog.Debug("Already up to date", "service", s.Spec.Name, "image", imageRef)
 		return
 	}
@@ -88,4 +88,12 @@ func (u *Updater) updateSwarm(ctx context.Context, s swarm.Service) {
 		slog.Error("Failed to update service", "service", s.Spec.Name, "error", err)
 		return
 	}
+}
+
+func isNewSwarmImage(current, target string) bool {
+	digest := imageDigest(current)
+	if digest == "" || target == "" {
+		return true
+	}
+	return digest != target
 }

@@ -78,7 +78,7 @@ func TestShouldRecreateDocker(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.expected, isNewImage(tc.currentImage, tc.targetImage))
+			assert.Equal(t, tc.expected, isNewDockerImage(tc.currentImage, tc.targetImage))
 		})
 	}
 }
@@ -112,7 +112,7 @@ func TestShouldUpdateSwarm(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.expected, isNewImage(tc.currentRef, tc.targetDigest))
+			assert.Equal(t, tc.expected, isNewSwarmImage(tc.currentRef, tc.targetDigest))
 		})
 	}
 }
