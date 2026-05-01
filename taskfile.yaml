@@ -13,7 +13,7 @@ tasks:
   build:
     desc: Build binary
     cmds:
-      - go build -ldflags="-s -w" -trimpath -o bin/orbitd
+      - go build -ldflags="-s -w" -trimpath -o orbitd
 
   lint:
     desc: Run go vet & lint
@@ -23,6 +23,7 @@ tasks:
       - go vet ./...
       - govulncheck ./...
       - go test -cover ./...
+      - gosec -exclude-generated ./...
 
   snapshot:
     desc: Build snapshot
