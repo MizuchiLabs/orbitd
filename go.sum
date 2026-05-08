@@ -52,6 +52,8 @@ github.com/docker/go-sdk/config v0.1.0-alpha013 h1:AbVVhOjtuyzlireZ8kJrzd3Xlrqz6
 github.com/docker/go-sdk/config v0.1.0-alpha013/go.mod h1:Eq39AVh06RUJ50fLvJHFKM80P9kZWTiog1x7NzrndBg=
 github.com/docker/go-sdk/container v0.1.0-alpha014 h1:504xjgUtTT04ivI4O1RvOIBmPBxglUPfiLWU8ryNJnk=
 github.com/docker/go-sdk/container v0.1.0-alpha014/go.mod h1:LQaRxG8VcGQ5BB+mgDK0GOixNfPNkrGisXljC34aXaE=
+github.com/docker/go-sdk/container v0.1.0-alpha015 h1:xc+EisqUbEiJu8OIgDg04mSYvYadq+RDACe/B9Dhub4=
+github.com/docker/go-sdk/container v0.1.0-alpha015/go.mod h1:O0mTuDUPrl6x8BwwL53k1Q0C6wDoUp4xAmE1uLzjszw=
 github.com/docker/go-sdk/context v0.1.0-alpha013 h1:he+yf7bEAOvDdeRkkd+vNFHiGhmZV2oSx0j7s9lI7e8=
 github.com/docker/go-sdk/context v0.1.0-alpha013/go.mod h1:a+3Mdx3Tss56tN5bajB3YfW29ZHdm6nenlB6yxIaeF4=
 github.com/docker/go-sdk/image v0.1.0-alpha014 h1:crFUh6sHDw0kkjtgBpq7R8UtCCt0ZSawitCneFqJJBY=
