@@ -80,16 +80,16 @@ jobs:
           NEW_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
 
           if [ "$PREV_TAG" != "$NEW_TAG" ] && [ -n "$NEW_TAG" ]; then
-            echo "released=true" >> $GITHUB_OUTPUT
+            echo "released=true" >> "$GITHUB_OUTPUT"
             echo "New release $NEW_TAG generated"
           else
-            echo "released=false" >> $GITHUB_OUTPUT
+            echo "released=false" >> "$GITHUB_OUTPUT"
             echo "No new release generated"
           fi
 
       - name: Run GoReleaser
         if: github.event_name == 'push' || steps.semantic.outputs.released == 'true'
-        uses: goreleaser/goreleaser-action@v5
+        uses: goreleaser/goreleaser-action@v7
         with:
           version: latest
           args: release --clean
