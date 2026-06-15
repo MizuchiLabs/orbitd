@@ -6,18 +6,18 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"time"
 
 	"github.com/docker/go-sdk/client"
 	"github.com/mizuchilabs/orbitd/internal/policy"
 	"github.com/moby/moby/api/types/swarm"
 	dockerclient "github.com/moby/moby/client"
+	"github.com/robfig/cron/v3"
 	"github.com/urfave/cli/v3"
 )
 
 type Updater struct {
 	Policy       policy.Policy // Update policy (patch, minor, major, digest)
-	Interval     time.Duration // Update check interval
+	Schedule     string        // Cron schedule
 	Cleanup      bool          // Prune old images
 	RequireLabel bool          // Only monitor orbitd.enable=true
 	hostname     string
@@ -33,7 +33,7 @@ func New(ctx context.Context, cmd *cli.Command) error {
 	hostname, _ := os.Hostname()
 	updater := &Updater{
 		Policy:       policy.Parse(cmd.String("policy")),
-		Interval:     max(5*time.Minute, cmd.Duration("interval")),
+		Schedule:     cmd.String("schedule"),
 		Cleanup:      cmd.Bool("cleanup"),
 		RequireLabel: cmd.Bool("require-label"),
 		hostname:     hostname,
@@ -61,7 +61,7 @@ func (u *Updater) Start(ctx context.Context) error {
 		mode = "swarm"
 	}
 
-	slog.Info("Starting orbitd", "interval", u.Interval, "mode", mode, "policy", u.Policy)
+	slog.Info("Starting orbitd", "schedule", u.Schedule, "mode", mode, "policy", u.Policy)
 
 	// Initial check
 	if isSwarm {
@@ -70,19 +70,19 @@ func (u *Updater) Start(ctx context.Context) error {
 		u.checkDocker(ctx)
 	}
 
-	ticker := time.NewTicker(u.Interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-			if isSwarm {
-				u.checkSwarm(ctx)
-			} else {
-				u.checkDocker(ctx)
-			}
+	c := cron.New()
+	_, err = c.AddFunc(u.Schedule, func() {
+		if isSwarm {
+			u.checkSwarm(ctx)
+		} else {
+			u.checkDocker(ctx)
 		}
+	})
+	if err != nil {
+		return fmt.Errorf("invalid schedule: %w", err)
 	}
+	c.Start()
+	<-ctx.Done()
+	<-c.Stop().Done()
+	return nil
 }

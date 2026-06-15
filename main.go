@@ -9,7 +9,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
-	"time"
 
 	"github.com/mizuchilabs/orbitd/internal/policy"
 	"github.com/mizuchilabs/orbitd/internal/updater"
@@ -81,12 +80,12 @@ func main() {
 				Value:   policy.Digest.String(),
 				Sources: cli.EnvVars("ORBITD_POLICY"),
 			},
-			&cli.DurationFlag{
-				Name:    "interval",
-				Aliases: []string{"i"},
-				Usage:   "Check for updates every interval (e.g., 5m, 1h, 12h)",
-				Value:   12 * time.Hour,
-				Sources: cli.EnvVars("ORBITD_INTERVAL"),
+			&cli.StringFlag{
+				Name:    "schedule",
+				Aliases: []string{"s"},
+				Usage:   "Cron schedule for updates (e.g., '0 3 * * *' or '@every 12h')",
+				Value:   "@every 12h",
+				Sources: cli.EnvVars("ORBITD_SCHEDULE"),
 			},
 			&cli.BoolFlag{
 				Name:    "cleanup",
