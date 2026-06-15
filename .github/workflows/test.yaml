@@ -19,11 +19,9 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
 
-      - name: Setup Go
-        uses: actions/setup-go@v6
+      - uses: actions/setup-go@v6
         with:
           go-version-file: "go.mod"
 
@@ -35,21 +33,14 @@ jobs:
           go vet ./...
           go test ./...
 
-      - name: Install GolangCI-Lint
-        uses: golangci/golangci-lint-action@v9
+      - uses: golangci/golangci-lint-action@v9
         with:
           args: --timeout=10m
-
-      - name: Run security checks
-        uses: securego/gosec@master
-        with:
-          args: -exclude-generated ./...
 
       - name: Build
         run: go build -ldflags="-s -w" -o bin/
 
-      - name: ghcr.io cleanup
-        uses: dataaxiom/ghcr-cleanup-action@v1
+      - uses: dataaxiom/ghcr-cleanup-action@v1
         with:
           keep-n-tagged: 10
           delete-untagged: true

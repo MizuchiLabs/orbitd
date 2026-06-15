@@ -19,19 +19,16 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: Setup Go
-        uses: actions/setup-go@v6
+      - uses: actions/setup-go@v6
         with:
           go-version-file: "go.mod"
 
-      - name: Setup Node.js
+      - uses: actions/setup-node@v6
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-        uses: actions/setup-node@v6
         with:
           node-version: "lts/*"
 
@@ -40,23 +37,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y upx
 
-      - name: Install Cosign
-        uses: sigstore/cosign-installer@v4.1.2
+      - uses: sigstore/cosign-installer@v4.1.2
 
-      - name: Install Syft
-        uses: anchore/sbom-action@v0
+      - uses: anchore/sbom-action@v0
         with:
           upload-release-assets: false
 
-      - name: Run GolangCI-Lint
-        uses: golangci/golangci-lint-action@v9
+      - uses: golangci/golangci-lint-action@v9
         with:
           args: --timeout=10m
 
-      - name: Run security checks
-        uses: securego/gosec@master
-        with:
-          args: -exclude-generated ./...
+      - uses: golang/govulncheck-action@v1
 
       - name: Check if module is tidy
         run: |

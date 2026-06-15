@@ -14,7 +14,5 @@ jobs:
   actionlint:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v6
-      - name: Run Actionlint
-        uses: raven-actions/actionlint@v2
+      - uses: actions/checkout@v6
+      - uses: raven-actions/actionlint@v2
