@@ -32,7 +32,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 ```
 
-That's it. Orbitd will check all containers every 12 hours and update them when new digests are available.
+That's it. Orbitd will check all containers every 12 hours (by default) and update them when new digests are available.
 
 Since v0.1.9, you can also run orbitd in docker swarm:
 
@@ -53,13 +53,24 @@ services:
 
 All settings are optional. Configure via environment variables or CLI flags:
 
-| Environment Variable   | CLI Flag          | Default  | Description                        |
-| ---------------------- | ----------------- | -------- | ---------------------------------- |
-| `ORBITD_INTERVAL`      | `--interval`      | `12h`    | Check frequency (e.g., `5m`, `1h`) |
-| `ORBITD_POLICY`        | `--policy`        | `digest` | Update policy (see below)          |
-| `ORBITD_CLEANUP`       | `--cleanup`       | `true`   | Remove old images after updates    |
-| `ORBITD_REQUIRE_LABEL` | `--require-label` | `false`  | Only update labeled containers     |
-| `ORBITD_DEBUG`         | `--debug`         | `false`  | Enable verbose logging             |
+| Environment Variable   | CLI Flag          | Default      | Description                          |
+| ---------------------- | ----------------- | ------------ | ------------------------------------ |
+| `ORBITD_SCHEDULE`      | `--schedule`      | `@every 12h` | Cron schedule or interval descriptor |
+| `ORBITD_POLICY`        | `--policy`        | `digest`     | Update policy (see below)            |
+| `ORBITD_CLEANUP`       | `--cleanup`       | `true`       | Remove old images after updates      |
+| `ORBITD_REQUIRE_LABEL` | `--require-label` | `false`      | Only update labeled containers       |
+| `ORBITD_DEBUG`         | `--debug`         | `false`      | Enable verbose logging               |
+
+### Scheduling
+
+Orbitd uses standard cron expressions or interval descriptors for scheduling updates via the `ORBITD_SCHEDULE` environment variable (or `--schedule` flag).
+
+**Examples:**
+
+- `@every 12h` - Run every 12 hours from start (Default)
+- `@every 30m` - Run every 30 minutes
+- `0 3 * * *` - Run daily at 3:00 AM
+- `0 0 * * 0` - Run weekly on Sunday at midnight
 
 ### Update Policies
 
