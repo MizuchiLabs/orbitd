@@ -129,6 +129,21 @@ Download from [releases](https://github.com/mizuchilabs/orbitd/releases) and run
 ./orbitd start
 ```
 
+## Private Registries
+
+Orbitd uses Docker's default credential chain to authenticate with private registries. To pull images from private repositories, mount your Docker config file into the orbitd container:
+
+```yaml
+services:
+  orbitd:
+    image: ghcr.io/mizuchilabs/orbitd:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /home/youruser/.docker/config.json:/root/.docker/config.json:ro
+```
+
+This config file is populated by running `docker login` on your host. Orbitd will use these credentials for both image tag discovery and pulling.
+
 ## License
 
 Apache 2.0 License - see [LICENSE](LICENSE) for details
