@@ -13,7 +13,7 @@ require (
 	github.com/moby/moby/client v0.5.0
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/stretchr/testify v1.11.1
-	github.com/urfave/cli/v3 v3.10.0
+	github.com/urfave/cli/v3 v3.10.1
 )
 
 require (
