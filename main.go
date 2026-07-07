@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"log/slog"
 	"os"
@@ -26,7 +25,7 @@ func main() {
 		EnableShellCompletion: true,
 		Suggest:               true,
 		Name:                  "orbitd",
-		Version:               fmt.Sprintf("%s (commit: %s, built: %s)", Version, Commit, Date),
+		Version:               Version,
 		Usage:                 "watching your containers",
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
 			level := slog.LevelInfo

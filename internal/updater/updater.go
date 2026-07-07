@@ -20,6 +20,7 @@ type Updater struct {
 	Schedule     string        // Cron schedule
 	Cleanup      bool          // Prune old images
 	RequireLabel bool          // Only monitor orbitd.enable=true
+	version      string
 	hostname     string
 	cli          client.SDKClient
 }
@@ -36,6 +37,7 @@ func New(ctx context.Context, cmd *cli.Command) error {
 		Schedule:     cmd.String("schedule"),
 		Cleanup:      cmd.Bool("cleanup"),
 		RequireLabel: cmd.Bool("require-label"),
+		version:      cmd.Root().Version,
 		hostname:     hostname,
 		cli:          cli,
 	}
@@ -61,7 +63,7 @@ func (u *Updater) Start(ctx context.Context) error {
 		mode = "swarm"
 	}
 
-	slog.Info("Starting orbitd", "schedule", u.Schedule, "mode", mode, "policy", u.Policy)
+	slog.Info("Starting orbitd", "version", u.version, "schedule", u.Schedule, "mode", mode, "policy", u.Policy)
 
 	// Initial check
 	if isSwarm {
