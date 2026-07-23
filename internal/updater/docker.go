@@ -89,8 +89,18 @@ func (u *Updater) updateDocker(ctx context.Context, c dockercontainer.Summary) {
 		return
 	}
 
-	slog.Info("Updating container", "image", res.target)
-	u.recreateDocker(ctx, res.target, c.ID)
+	displayRef := imageDisplayRef(c.Image, res.target)
+	if displayRef != res.target {
+		if _, err := u.cli.ImageTag(ctx, dockerclient.ImageTagOptions{
+			Source: res.target,
+			Target: displayRef,
+		}); err != nil {
+			slog.Warn("Failed to tag image", "ref", displayRef, "error", err)
+		}
+	}
+
+	slog.Info("Updating container", "image", displayRef)
+	u.recreateDocker(ctx, displayRef, c.ID)
 }
 
 func (u *Updater) recreateDocker(ctx context.Context, image, id string) {

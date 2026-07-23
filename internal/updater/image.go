@@ -48,6 +48,32 @@ func (u *Updater) resolveTargetImage(
 	}, nil
 }
 
+func imageDisplayRef(currentRef, targetRef string) string {
+	_, targetTag, err := policy.ParseImage(targetRef)
+	if err != nil {
+		return targetRef
+	}
+
+	_, currentTag, err := policy.ParseImage(currentRef)
+	if err == nil && currentTag == targetTag {
+		return currentRef
+	}
+
+	name := currentRef
+	if idx := strings.LastIndex(currentRef, ":"); idx >= 0 {
+		rest := currentRef[idx+1:]
+		if !strings.Contains(rest, "/") {
+			name = currentRef[:idx]
+		}
+	}
+
+	if targetTag == "" {
+		targetTag = "latest"
+	}
+
+	return name + ":" + targetTag
+}
+
 func imageDigest(imageRef string) string {
 	_, digest, ok := strings.Cut(imageRef, "@")
 	if !ok {
