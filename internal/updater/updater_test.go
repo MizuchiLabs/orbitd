@@ -83,6 +83,58 @@ func TestShouldRecreateDocker(t *testing.T) {
 	}
 }
 
+func TestImageDisplayRef_PreservesShortForm(t *testing.T) {
+	tests := []struct {
+		name       string
+		currentRef string
+		targetRef  string
+		expected   string
+	}{
+		{
+			name:       "digest policy: same tag",
+			currentRef: "nginx:1.25",
+			targetRef:  "index.docker.io/library/nginx:1.25",
+			expected:   "nginx:1.25",
+		},
+		{
+			name:       "semver bump: new minor version",
+			currentRef: "nginx:1.24",
+			targetRef:  "index.docker.io/library/nginx:1.25",
+			expected:   "nginx:1.25",
+		},
+		{
+			name:       "no tag in current ref (implicit latest)",
+			currentRef: "nginx",
+			targetRef:  "index.docker.io/library/nginx:1.25",
+			expected:   "nginx:1.25",
+		},
+		{
+			name:       "private registry with port",
+			currentRef: "localhost:5000/myapp:v1",
+			targetRef:  "localhost:5000/myapp:v2",
+			expected:   "localhost:5000/myapp:v2",
+		},
+		{
+			name:       "private registry same tag",
+			currentRef: "ghcr.io/org/app:1.0",
+			targetRef:  "ghcr.io/org/app:1.0",
+			expected:   "ghcr.io/org/app:1.0",
+		},
+		{
+			name:       "target tag is latest — preserve name without tag",
+			currentRef: "nginx:1.25",
+			targetRef:  "index.docker.io/library/nginx:latest",
+			expected:   "nginx:latest",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expected, imageDisplayRef(tc.currentRef, tc.targetRef))
+		})
+	}
+}
+
 func TestShouldUpdateSwarm(t *testing.T) {
 	tests := []struct {
 		name         string
