@@ -2,13 +2,14 @@ package main
 
 import (
 	"context"
-	"log"
+	"fmt"
 	"log/slog"
 	"os"
-	"os/signal"
 	"path/filepath"
-	"syscall"
 
+	"github.com/mizuchilabs/kata/buildinfo"
+	"github.com/mizuchilabs/kata/logx"
+	"github.com/mizuchilabs/kata/sigx"
 	"github.com/mizuchilabs/orbitd/internal/policy"
 	"github.com/mizuchilabs/orbitd/internal/updater"
 	"github.com/urfave/cli/v3"
@@ -25,16 +26,10 @@ func main() {
 		EnableShellCompletion: true,
 		Suggest:               true,
 		Name:                  "orbitd",
-		Version:               Version,
+		Version:               buildinfo.String(),
 		Usage:                 "watching your containers",
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
-			level := slog.LevelInfo
-			if cmd.Bool("debug") {
-				level = slog.LevelDebug
-			}
-			slog.SetDefault(
-				slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})),
-			)
+			logx.Init(cmd.Bool("debug"))
 
 			if _, err := os.Stat("/var/run/docker.sock"); err != nil {
 				slog.Warn("Docker socket not found", "path", "/var/run/docker.sock")
@@ -103,11 +98,8 @@ func main() {
 		},
 	}
 
-	// Graceful shutdown
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
-	if err := cmd.Run(ctx, os.Args); err != nil {
-		log.Fatal(err)
+	if err := cmd.Run(sigx.NotifyContext(), os.Args); err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %v\n", cmd.Name, err)
+		os.Exit(1)
 	}
 }
