@@ -1,8 +1,10 @@
 package updater
 
 import (
+	"context"
 	"testing"
 
+	"github.com/mizuchilabs/orbitd/internal/policy"
 	"github.com/moby/moby/api/types/container"
 	"github.com/stretchr/testify/assert"
 )
@@ -72,7 +74,13 @@ func TestShouldRecreateDocker(t *testing.T) {
 			name:         "missing current image id",
 			currentImage: "",
 			targetImage:  "sha256:next",
-			expected:     true,
+			expected:     false,
+		},
+		{
+			name:         "missing both image ids",
+			currentImage: "",
+			targetImage:  "",
+			expected:     false,
 		},
 	}
 
@@ -83,56 +91,19 @@ func TestShouldRecreateDocker(t *testing.T) {
 	}
 }
 
-func TestImageDisplayRef_PreservesShortForm(t *testing.T) {
-	tests := []struct {
-		name       string
-		currentRef string
-		targetRef  string
-		expected   string
-	}{
-		{
-			name:       "digest policy: same tag",
-			currentRef: "nginx:1.25",
-			targetRef:  "index.docker.io/library/nginx:1.25",
-			expected:   "nginx:1.25",
-		},
-		{
-			name:       "semver bump: new minor version",
-			currentRef: "nginx:1.24",
-			targetRef:  "index.docker.io/library/nginx:1.25",
-			expected:   "nginx:1.25",
-		},
-		{
-			name:       "no tag in current ref (implicit latest)",
-			currentRef: "nginx",
-			targetRef:  "index.docker.io/library/nginx:1.25",
-			expected:   "nginx:1.25",
-		},
-		{
-			name:       "private registry with port",
-			currentRef: "localhost:5000/myapp:v1",
-			targetRef:  "localhost:5000/myapp:v2",
-			expected:   "localhost:5000/myapp:v2",
-		},
-		{
-			name:       "private registry same tag",
-			currentRef: "ghcr.io/org/app:1.0",
-			targetRef:  "ghcr.io/org/app:1.0",
-			expected:   "ghcr.io/org/app:1.0",
-		},
-		{
-			name:       "target tag is latest — preserve name without tag",
-			currentRef: "nginx:1.25",
-			targetRef:  "index.docker.io/library/nginx:latest",
-			expected:   "nginx:latest",
-		},
-	}
+func TestResolveTargetImageDigest(t *testing.T) {
+	u := &Updater{Policy: policy.Digest}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.expected, imageDisplayRef(tc.currentRef, tc.targetRef))
-		})
-	}
+	res, err := u.resolveTargetImage(context.Background(), "nginx:1.25", nil)
+	assert.NoError(t, err)
+	assert.Equal(t, "nginx:1.25", res.current)
+	assert.Equal(t, "nginx:1.25", res.target)
+	assert.Equal(t, policy.Digest, res.policy)
+
+	// A pinned digest is dropped so the container follows the tag again.
+	res, err = u.resolveTargetImage(context.Background(), "nginx:1.25@sha256:abc", nil)
+	assert.NoError(t, err)
+	assert.Equal(t, "nginx:1.25", res.target)
 }
 
 func TestShouldUpdateSwarm(t *testing.T) {
