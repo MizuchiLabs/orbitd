@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/docker/go-sdk/client"
+	"github.com/mizuchilabs/kata/buildinfo"
 	"github.com/mizuchilabs/orbitd/internal/policy"
 	"github.com/moby/moby/api/types/swarm"
 	dockerclient "github.com/moby/moby/client"
@@ -21,7 +22,6 @@ type Updater struct {
 	Schedule     string        // Cron schedule
 	Cleanup      bool          // Prune old images
 	RequireLabel bool          // Only monitor orbitd.enable=true
-	version      string
 	hostname     string
 	cli          client.SDKClient
 	pull         func(ctx context.Context, image string) error
@@ -39,7 +39,6 @@ func New(ctx context.Context, cmd *cli.Command) error {
 		Schedule:     cmd.String("schedule"),
 		Cleanup:      cmd.Bool("cleanup"),
 		RequireLabel: cmd.Bool("require-label"),
-		version:      cmd.Root().Version,
 		hostname:     hostname,
 		cli:          cli,
 	}
@@ -68,7 +67,7 @@ func (u *Updater) Start(ctx context.Context) error {
 	slog.Info(
 		"Starting orbitd",
 		"version",
-		u.version,
+		buildinfo.Version,
 		"schedule",
 		u.Schedule,
 		"mode",
