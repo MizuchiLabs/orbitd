@@ -3,7 +3,7 @@ package updater
 import (
 	"context"
 	"log/slog"
-	"sync"
+	"strings"
 
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
@@ -12,12 +12,7 @@ import (
 )
 
 func (u *Updater) checkSwarm(ctx context.Context) {
-	filters := dockerclient.Filters{}
-	if u.RequireLabel {
-		filters.Add("label", "orbitd.enable=true")
-	}
-
-	res, err := u.cli.ServiceList(ctx, dockerclient.ServiceListOptions{Filters: filters})
+	res, err := u.cli.ServiceList(ctx, dockerclient.ServiceListOptions{Filters: u.filters()})
 	if err != nil {
 		slog.Error("Failed to list services", "error", err)
 		return
@@ -25,21 +20,10 @@ func (u *Updater) checkSwarm(ctx context.Context) {
 
 	slog.Debug("Found services", "count", len(res.Items))
 
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, 3)
-	for _, c := range res.Items {
-		if ctx.Err() != nil {
-			break
-		}
+	updateAll(ctx, len(res.Items), func(ctx context.Context, i int) {
+		u.updateSwarm(ctx, res.Items[i])
+	})
 
-		sem <- struct{}{}
-		wg.Go(func() {
-			defer func() { <-sem }()
-			u.updateSwarm(ctx, c)
-		})
-	}
-
-	wg.Wait()
 	if ctx.Err() == nil {
 		u.pruneImagesDocker(ctx)
 	}
@@ -104,8 +88,8 @@ func (u *Updater) updateSwarm(ctx context.Context, s swarm.Service) {
 }
 
 func isNewSwarmImage(current, target string) bool {
-	digest := imageDigest(current)
-	if digest == "" || target == "" {
+	_, digest, ok := strings.Cut(current, "@")
+	if !ok || digest == "" || target == "" {
 		return true
 	}
 	return digest != target

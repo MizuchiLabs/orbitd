@@ -7,7 +7,6 @@ import (
 	"io"
 	"log/slog"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/docker/go-sdk/container"
@@ -19,12 +18,7 @@ import (
 )
 
 func (u *Updater) checkDocker(ctx context.Context) {
-	filters := dockerclient.Filters{}
-	if u.RequireLabel {
-		filters.Add("label", "orbitd.enable=true")
-	}
-
-	res, err := u.cli.ContainerList(ctx, dockerclient.ContainerListOptions{Filters: filters})
+	res, err := u.cli.ContainerList(ctx, dockerclient.ContainerListOptions{Filters: u.filters()})
 	if err != nil {
 		slog.Error("Failed to list containers", "error", err)
 		return
@@ -32,41 +26,31 @@ func (u *Updater) checkDocker(ctx context.Context) {
 
 	slog.Debug("Found containers", "count", len(res.Items))
 
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, 3) // Limit concurrency to 3 simultaneous updates
-	for _, c := range res.Items {
-		if ctx.Err() != nil {
-			break
-		}
+	updateAll(ctx, len(res.Items), func(ctx context.Context, i int) {
+		u.updateDocker(ctx, res.Items[i])
+	})
 
-		sem <- struct{}{}
-		wg.Go(func() {
-			defer func() { <-sem }()
-			u.updateDocker(ctx, c)
-		})
-	}
-
-	wg.Wait()
 	if ctx.Err() == nil {
 		u.pruneImagesDocker(ctx)
 	}
 }
 
 func (u *Updater) updateDocker(ctx context.Context, c dockercontainer.Summary) {
-	if !hasNamedImage(c.Image) {
+	imageRef, ok := u.namedImage(ctx, c)
+	if !ok {
 		return
 	}
 
-	res, err := u.resolveTargetImage(ctx, c.Image, c.Labels)
+	res, err := u.resolveTargetImage(ctx, imageRef, c.Labels)
 	if err != nil {
-		slog.Warn("Could not resolve target image", "image", c.Image, "error", err)
+		slog.Warn("Could not resolve target image", "image", imageRef, "error", err)
 		return
 	}
 	if res.target != res.current {
 		slog.Info("Update found", "from", res.current, "to", res.target, "policy", res.policy)
 	}
 
-	if err := u.pullDocker(ctx, res.target); err != nil {
+	if err := u.pullImage(ctx, res.target); err != nil {
 		slog.Warn("Pull failed", "image", res.target, "error", err)
 		return
 	}
@@ -89,18 +73,24 @@ func (u *Updater) updateDocker(ctx context.Context, c dockercontainer.Summary) {
 		return
 	}
 
-	displayRef := imageDisplayRef(c.Image, res.target)
-	if displayRef != res.target {
-		if _, err := u.cli.ImageTag(ctx, dockerclient.ImageTagOptions{
-			Source: res.target,
-			Target: displayRef,
-		}); err != nil {
-			slog.Warn("Failed to tag image", "ref", displayRef, "error", err)
-		}
+	slog.Info("Updating container", "image", res.target)
+	u.recreateDocker(ctx, res.target, c.ID)
+}
+
+// namedImage returns the container's image reference. The list API reports a
+// bare sha256:... id once the image becomes dangling (for example after an
+// interrupted update), so it falls back to the Config.Image the container was
+// originally created with.
+func (u *Updater) namedImage(ctx context.Context, c dockercontainer.Summary) (string, bool) {
+	if hasNamedImage(c.Image) {
+		return c.Image, true
 	}
 
-	slog.Info("Updating container", "image", displayRef)
-	u.recreateDocker(ctx, displayRef, c.ID)
+	info, err := u.cli.ContainerInspect(ctx, c.ID, dockerclient.ContainerInspectOptions{})
+	if err != nil || info.Container.Config == nil || !hasNamedImage(info.Container.Config.Image) {
+		return "", false
+	}
+	return info.Container.Config.Image, true
 }
 
 func (u *Updater) recreateDocker(ctx context.Context, image, id string) {
@@ -136,7 +126,7 @@ func (u *Updater) recreateDocker(ctx context.Context, image, id string) {
 	}
 
 	// Free up container name
-	backupName := name + "-orbitd-old-" + id[:12]
+	backupName := name + "-orbitd-old-" + shortID(id)
 	if _, err := u.cli.ContainerRename(
 		ctx,
 		id,
@@ -159,7 +149,7 @@ func (u *Updater) recreateDocker(ctx context.Context, image, id string) {
 	newConfig.Image = image
 
 	// Clear auto-generated hostnames
-	if len(info.Container.ID) >= 12 && newConfig.Hostname == info.Container.ID[:12] {
+	if newConfig.Hostname == shortID(info.Container.ID) {
 		newConfig.Hostname = ""
 	}
 
@@ -251,6 +241,13 @@ func (u *Updater) recreateDocker(ctx context.Context, image, id string) {
 	}
 }
 
+func (u *Updater) pullImage(ctx context.Context, img string) error {
+	if u.pull != nil {
+		return u.pull(ctx, img)
+	}
+	return u.pullDocker(ctx, img)
+}
+
 func (u *Updater) pullDocker(ctx context.Context, img string) error {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
 	defer cancel()
@@ -287,9 +284,18 @@ func (u *Updater) pruneImagesDocker(ctx context.Context) {
 
 func isNewDockerImage(current, target string) bool {
 	if current == "" || target == "" {
-		return true
+		return false
 	}
 	return current != target
+}
+
+// shortID truncates a container ID to its first 12 characters, guarding
+// against short IDs.
+func shortID(id string) string {
+	if len(id) > 12 {
+		return id[:12]
+	}
+	return id
 }
 
 // isSelfDocker checks whether this container is the orbitd instance itself
