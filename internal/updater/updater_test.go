@@ -7,6 +7,7 @@ import (
 	"github.com/mizuchilabs/orbitd/internal/policy"
 	"github.com/moby/moby/api/types/container"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestIsSelfDocker(t *testing.T) {
@@ -95,15 +96,53 @@ func TestResolveTargetImageDigest(t *testing.T) {
 	u := &Updater{Policy: policy.Digest}
 
 	res, err := u.resolveTargetImage(context.Background(), "nginx:1.25", nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "nginx:1.25", res.current)
 	assert.Equal(t, "nginx:1.25", res.target)
 	assert.Equal(t, policy.Digest, res.policy)
 
 	// A pinned digest is dropped so the container follows the tag again.
 	res, err = u.resolveTargetImage(context.Background(), "nginx:1.25@sha256:abc", nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "nginx:1.25", res.target)
+}
+
+func TestResolveTargetImageLabelOverride(t *testing.T) {
+	tests := []struct {
+		name     string
+		policy   policy.Policy
+		label    map[string]string
+		expected policy.Policy
+	}{
+		{
+			name:     "label to digest overrides minor",
+			policy:   policy.Minor,
+			label:    map[string]string{"orbitd.policy": "digest"},
+			expected: policy.Digest,
+		},
+		{
+			name:     "invalid label falls back to default",
+			policy:   policy.Digest,
+			label:    map[string]string{"orbitd.policy": "garbage"},
+			expected: policy.Digest,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			u := &Updater{Policy: tc.policy}
+			res, err := u.resolveTargetImage(context.Background(), "nginx:1.25", tc.label)
+			require.NoError(t, err)
+			assert.Equal(t, tc.expected, res.policy)
+		})
+	}
+}
+
+func TestPinImageDigest(t *testing.T) {
+	assert.Equal(t,
+		"nginx:1.25@sha256:abc",
+		pinImageDigest("nginx:1.25", "sha256:abc"),
+	)
 }
 
 func TestShouldUpdateSwarm(t *testing.T) {
@@ -129,6 +168,12 @@ func TestShouldUpdateSwarm(t *testing.T) {
 			name:         "missing current digest",
 			currentRef:   "nginx:1.27",
 			targetDigest: "sha256:abc",
+			expected:     true,
+		},
+		{
+			name:         "missing target digest",
+			currentRef:   "nginx:1.27@sha256:abc",
+			targetDigest: "",
 			expected:     true,
 		},
 	}

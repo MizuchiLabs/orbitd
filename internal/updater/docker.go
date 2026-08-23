@@ -1,4 +1,3 @@
-// Package updater monitors and updates containers.
 package updater
 
 import (

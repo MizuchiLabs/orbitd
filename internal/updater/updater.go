@@ -65,7 +65,17 @@ func (u *Updater) Start(ctx context.Context) error {
 		mode = "swarm"
 	}
 
-	slog.Info("Starting orbitd", "version", u.version, "schedule", u.Schedule, "mode", mode, "policy", u.Policy)
+	slog.Info(
+		"Starting orbitd",
+		"version",
+		u.version,
+		"schedule",
+		u.Schedule,
+		"mode",
+		mode,
+		"policy",
+		u.Policy,
+	)
 
 	// Initial check
 	if isSwarm {
