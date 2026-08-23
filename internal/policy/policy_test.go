@@ -6,6 +6,7 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPolicyIsValid(t *testing.T) {
@@ -76,7 +77,7 @@ func TestParseImage(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.image, func(t *testing.T) {
 			repo, tag, err := ParseImage(tc.image)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tc.expectedRepo, repo)
 			assert.Equal(t, tc.expectedTag, tag)
 		})
@@ -156,10 +157,20 @@ func TestFindUpdateTarget_EarlyExit(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.image+"_"+tc.policy.String(), func(t *testing.T) {
 			target, err := FindUpdateTarget(ctx, tc.image, tc.policy)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tc.expected, target)
 		})
 	}
+}
+
+func TestFindUpdateTargetInvalidImage(t *testing.T) {
+	ctx := context.Background()
+
+	_, err := FindUpdateTarget(ctx, "", Patch)
+	require.Error(t, err)
+
+	_, err = FindUpdateTarget(ctx, ":", Minor)
+	require.Error(t, err)
 }
 
 func TestFindBestVersion(t *testing.T) {
@@ -180,8 +191,7 @@ func TestFindBestVersion(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.current+"_"+tc.policy.String(), func(t *testing.T) {
 			current, _ := semver.NewVersion(tc.current)
-			best, err := findBestVersion(repo, tags, current, tc.policy)
-			assert.NoError(t, err)
+			best := findBestVersion(repo, tags, current, tc.policy)
 			assert.Equal(t, tc.expected, best)
 		})
 	}

@@ -82,7 +82,7 @@ func FindUpdateTarget(ctx context.Context, image string, policy Policy) (string,
 		return "", err
 	}
 
-	return findBestVersion(repo, tags, currentVer, policy)
+	return findBestVersion(repo, tags, currentVer, policy), nil
 }
 
 func findBestVersion(
@@ -90,7 +90,7 @@ func findBestVersion(
 	tags []string,
 	current *semver.Version,
 	policy Policy,
-) (string, error) {
+) string {
 	var best *semver.Version
 	var pullTag string
 
@@ -111,9 +111,9 @@ func findBestVersion(
 	}
 
 	if best == nil {
-		return repo + ":" + current.Original(), nil
+		return repo + ":" + current.Original()
 	}
-	return repo + ":" + pullTag, nil
+	return repo + ":" + pullTag
 }
 
 func isAllowed(v, current *semver.Version, policy Policy) bool {
