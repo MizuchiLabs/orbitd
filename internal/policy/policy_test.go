@@ -59,24 +59,18 @@ func TestParseOr(t *testing.T) {
 
 func TestParseImage(t *testing.T) {
 	tests := []struct {
-		image         string
-		expectedRepo  string
-		expectedTag   string
-		expectedShort string
+		image        string
+		expectedRepo string
+		expectedTag  string
 	}{
-		{"nginx:1.21.1", "index.docker.io/library/nginx", "1.21.1", "nginx"},
-		{"nginx", "index.docker.io/library/nginx", "latest", "nginx"},
-		{"ghcr.io/mizuchilabs/orbitd:v0.1.0", "ghcr.io/mizuchilabs/orbitd", "v0.1.0", "orbitd"},
-		{
-			"mizuchilabs/orbitd@sha256:abcdef",
-			"index.docker.io/mizuchilabs/orbitd",
-			"latest",
-			"orbitd",
-		},
-		{"nginx:1.21.1@sha256:abcdef", "index.docker.io/library/nginx", "1.21.1", "nginx"},
-		{"myregistry.com:5000/myimage:v1.0", "myregistry.com:5000/myimage", "v1.0", "myimage"},
-		{"myregistry.com/team/app:v1.2.3", "myregistry.com/team/app", "v1.2.3", "app"},
-		{"bitnami/postgresql:14", "index.docker.io/bitnami/postgresql", "14", "postgresql"},
+		{"nginx:1.21.1", "nginx", "1.21.1"},
+		{"nginx", "nginx", "latest"},
+		{"ghcr.io/mizuchilabs/orbitd:v0.1.0", "ghcr.io/mizuchilabs/orbitd", "v0.1.0"},
+		{"mizuchilabs/orbitd@sha256:abcdef", "mizuchilabs/orbitd", "latest"},
+		{"nginx:1.21.1@sha256:abcdef", "nginx", "1.21.1"},
+		{"myregistry.com:5000/myimage:v1.0", "myregistry.com:5000/myimage", "v1.0"},
+		{"myregistry.com/team/app:v1.2.3", "myregistry.com/team/app", "v1.2.3"},
+		{"bitnami/postgresql:14", "bitnami/postgresql", "14"},
 	}
 
 	for _, tc := range tests {

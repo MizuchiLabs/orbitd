@@ -136,11 +136,12 @@ func isAllowed(v, current *semver.Version, policy Policy) bool {
 	}
 }
 
-// ParseImage parses a Docker image string and returns its repository, tag, and short name.
-// It explicitly strips any trailing digest (e.g. @sha256:...) before parsing to ensure
-// the tag information is not lost.
+// ParseImage splits a Docker image reference into its repository and tag,
+// stripping any trailing digest (e.g. @sha256:...). The repository is
+// returned in its familiar form ("nginx", "ghcr.io/org/app") rather than the
+// fully qualified one ("index.docker.io/library/nginx"), so orbitd recreates
+// containers with the same spelling originally chosen.
 func ParseImage(img string) (repo, tag string, err error) {
-	// Strip digest to keep the tag intact (go-containerregistry discards tags if a digest is present)
 	baseImg, _, _ := strings.Cut(img, "@")
 
 	ref, err := name.ParseReference(baseImg, name.WeakValidation)
@@ -148,10 +149,19 @@ func ParseImage(img string) (repo, tag string, err error) {
 		return "", "", err
 	}
 
-	repo = ref.Context().String()
+	repo = familiarName(ref.Context())
 	if t, ok := ref.(name.Tag); ok {
 		return repo, t.TagStr(), nil
 	}
 
 	return repo, "latest", nil
+}
+
+// familiarName drops Docker Hub's default registry and implicit library/
+// namespace from a repository name.
+func familiarName(r name.Repository) string {
+	if r.RegistryStr() == name.DefaultRegistry {
+		return strings.TrimPrefix(r.RepositoryStr(), "library/")
+	}
+	return r.RegistryStr() + "/" + r.RepositoryStr()
 }
