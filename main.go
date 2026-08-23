@@ -49,17 +49,7 @@ func main() {
 			}
 			return ctx, nil
 		},
-		DefaultCommand: "start",
-		Commands: []*cli.Command{
-			{
-				Name:    "start",
-				Aliases: []string{"s"},
-				Usage:   "Start the orbitd daemon to monitor and update containers",
-				Action: func(ctx context.Context, cmd *cli.Command) error {
-					return updater.New(ctx, cmd)
-				},
-			},
-		},
+		Action: updater.New,
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
 				Name:    "debug",
