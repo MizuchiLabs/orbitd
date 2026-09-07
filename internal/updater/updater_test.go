@@ -4,10 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/mizuchilabs/orbitd/internal/policy"
 	"github.com/moby/moby/api/types/container"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mizuchilabs/orbitd/internal/policy"
 )
 
 func TestIsSelfDocker(t *testing.T) {

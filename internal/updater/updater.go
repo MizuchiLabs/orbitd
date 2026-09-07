@@ -10,11 +10,12 @@ import (
 
 	"github.com/docker/go-sdk/client"
 	"github.com/mizuchilabs/kata/buildinfo"
-	"github.com/mizuchilabs/orbitd/internal/policy"
 	"github.com/moby/moby/api/types/swarm"
 	dockerclient "github.com/moby/moby/client"
 	"github.com/robfig/cron/v3"
 	"github.com/urfave/cli/v3"
+
+	"github.com/mizuchilabs/orbitd/internal/policy"
 )
 
 type Updater struct {
