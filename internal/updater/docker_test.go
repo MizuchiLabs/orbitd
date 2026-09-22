@@ -80,8 +80,9 @@ func (f *fakeClient) addContainer() {
 
 // addImage registers an image ID for a reference.
 func (f *fakeClient) addImage(id string) {
-	res := dockerclient.ImageInspectResult{}
-	res.ID = id
+	res := dockerclient.ImageInspectResult{
+		ID: id,
+	}
 	f.images["nginx:1.25"] = res
 }
 
