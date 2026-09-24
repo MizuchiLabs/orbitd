@@ -9,7 +9,7 @@ require (
 	github.com/docker/go-sdk/image v0.1.0-alpha015
 	github.com/docker/go-units v0.5.0
 	github.com/google/go-containerregistry v0.22.1
-	github.com/mizuchilabs/kata v0.1.12
+	github.com/mizuchilabs/kata v0.1.13
 	github.com/moby/moby/api v1.56.0
 	github.com/moby/moby/client v0.6.0
 	github.com/robfig/cron/v3 v3.0.1
