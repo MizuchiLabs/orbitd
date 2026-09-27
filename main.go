@@ -26,7 +26,7 @@ func main() {
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
 			logx.Init(cmd.Bool("debug"))
 
-			if _, err := os.Stat("/var/run/docker.sock"); err != nil {
+			if _, err := os.Stat("/var/run/docker.sock"); err != nil && os.Getenv("DOCKER_HOST") == "" {
 				slog.Warn("Docker socket not found", "path", "/var/run/docker.sock")
 			}
 
