@@ -13,7 +13,7 @@ import (
 
 func TestIsSelfDocker(t *testing.T) {
 	u := &Updater{
-		hostname: "abcdef123456",
+		selfID: "abcdef123456",
 	}
 
 	tests := []struct {
@@ -29,12 +29,12 @@ func TestIsSelfDocker(t *testing.T) {
 			expected: true,
 		},
 		{
-			name: "matches name",
+			name: "name alone does not match",
 			c: container.Summary{
 				ID:    "1234567890abcdef",
 				Names: []string{"/orbitd"},
 			},
-			expected: true,
+			expected: false,
 		},
 		{
 			name: "no match",
@@ -96,14 +96,14 @@ func TestShouldRecreateDocker(t *testing.T) {
 func TestResolveTargetImageDigest(t *testing.T) {
 	u := &Updater{Policy: policy.Digest}
 
-	res, err := u.resolveTargetImage(context.Background(), "nginx:1.25", nil)
+	res, err := u.resolveTargetImage(context.Background(), nil, "nginx:1.25", nil)
 	require.NoError(t, err)
 	assert.Equal(t, "nginx:1.25", res.current)
 	assert.Equal(t, "nginx:1.25", res.target)
 	assert.Equal(t, policy.Digest, res.policy)
 
 	// A pinned digest is dropped so the container follows the tag again.
-	res, err = u.resolveTargetImage(context.Background(), "nginx:1.25@sha256:abc", nil)
+	res, err = u.resolveTargetImage(context.Background(), nil, "nginx:1.25@sha256:abc", nil)
 	require.NoError(t, err)
 	assert.Equal(t, "nginx:1.25", res.target)
 }
@@ -132,7 +132,7 @@ func TestResolveTargetImageLabelOverride(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			u := &Updater{Policy: tc.policy}
-			res, err := u.resolveTargetImage(context.Background(), "nginx:1.25", tc.label)
+			res, err := u.resolveTargetImage(context.Background(), nil, "nginx:1.25", tc.label)
 			require.NoError(t, err)
 			assert.Equal(t, tc.expected, res.policy)
 		})
@@ -184,4 +184,32 @@ func TestShouldUpdateSwarm(t *testing.T) {
 			assert.Equal(t, tc.expected, isNewSwarmImage(tc.currentRef, tc.targetDigest))
 		})
 	}
+}
+
+func TestContainerIDFromMountinfo(t *testing.T) {
+	id := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	other := "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+
+	inContainer := "" +
+		"1 0 0:1 / / rw - overlay overlay rw\n" +
+		"2 1 8:1 /var/lib/docker/containers/" + id + "/hostname /etc/hostname rw - ext4 /dev/sda1 rw\n"
+	assert.Equal(t, id, containerIDFromMountinfo([]byte(inContainer)))
+
+	// On the host, other containers' mounts show up but are not ours.
+	onHost := "3 1 0:2 / /var/lib/docker/containers/" + other + "/mounts/shm rw - tmpfs shm rw\n"
+	assert.Empty(t, containerIDFromMountinfo([]byte(onHost)))
+}
+
+func TestOnceMapRunsOncePerKey(t *testing.T) {
+	var m onceMap[string]
+	calls := 0
+	fn := func() (string, error) { calls++; return "v", nil }
+
+	for range 3 {
+		v, err := m.do("a", fn)
+		require.NoError(t, err)
+		assert.Equal(t, "v", v)
+	}
+	_, _ = m.do("b", fn)
+	assert.Equal(t, 2, calls)
 }

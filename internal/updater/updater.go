@@ -2,10 +2,14 @@
 package updater
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
 	"os"
+	"regexp"
+	"strings"
 	"sync"
 
 	"github.com/docker/go-sdk/client"
@@ -18,51 +22,63 @@ import (
 	"github.com/mizuchilabs/orbitd/internal/policy"
 )
 
+const maxConcurrentUpdates = 3
+
+var (
+	containerIDRe = regexp.MustCompile(`/containers/([0-9a-f]{64})/`)
+	shortIDRe     = regexp.MustCompile(`^[0-9a-f]{12}$`)
+)
+
 type Updater struct {
-	Policy       policy.Policy // Update policy (patch, minor, major, digest)
-	Schedule     string        // Cron schedule
-	Cleanup      bool          // Prune old images
-	RequireLabel bool          // Only monitor orbitd.enable=true
-	hostname     string
+	Policy       policy.Policy
+	Schedule     string
+	Cleanup      bool
+	RequireLabel bool
+	selfID       string
 	cli          client.SDKClient
 	pull         func(ctx context.Context, image string) error
 }
 
+// run caches registry lookups and pulls for a single update pass.
+// A nil run disables caching.
+type run struct {
+	targets onceMap[string]
+	pulls   onceMap[struct{}]
+	digests onceMap[string]
+}
+
+type onceMap[V any] struct {
+	mu sync.Mutex
+	m  map[string]func() (V, error)
+}
+
 func New(ctx context.Context, cmd *cli.Command) error {
+	pol, err := policy.Parse(cmd.String("policy"))
+	if err != nil {
+		return err
+	}
+
 	cli, err := client.New(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create docker client: %w", err)
 	}
+	defer func() { _ = cli.Close() }()
 
-	hostname, _ := os.Hostname()
 	updater := &Updater{
-		Policy:       policy.Parse(cmd.String("policy")),
+		Policy:       pol,
 		Schedule:     cmd.String("schedule"),
 		Cleanup:      cmd.Bool("cleanup"),
 		RequireLabel: cmd.Bool("require-label"),
-		hostname:     hostname,
+		selfID:       selfContainerID(),
 		cli:          cli,
 	}
-
-	// Handle shutdown
-	go func() {
-		<-ctx.Done()
-		_ = cli.Close()
-	}()
 	return updater.Start(ctx)
 }
 
 func (u *Updater) Start(ctx context.Context) error {
-	info, err := u.cli.Info(ctx, dockerclient.InfoOptions{})
-	isSwarm := false
-	if err == nil {
-		isSwarm = info.Info.Swarm.LocalNodeState == swarm.LocalNodeStateActive &&
-			info.Info.Swarm.ControlAvailable
-	}
-
-	mode := "standalone"
-	if isSwarm {
-		mode = "swarm"
+	c := cron.New(cron.WithChain(cron.SkipIfStillRunning(cron.DiscardLogger)))
+	if _, err := c.AddFunc(u.Schedule, func() { u.check(ctx) }); err != nil {
+		return fmt.Errorf("invalid schedule: %w", err)
 	}
 
 	slog.Info(
@@ -71,37 +87,35 @@ func (u *Updater) Start(ctx context.Context) error {
 		buildinfo.Version,
 		"schedule",
 		u.Schedule,
-		"mode",
-		mode,
 		"policy",
 		u.Policy,
 	)
 
-	// Initial check
-	if isSwarm {
-		u.checkSwarm(ctx)
-	} else {
-		u.checkDocker(ctx)
-	}
+	u.check(ctx)
 
-	c := cron.New()
-	_, err = c.AddFunc(u.Schedule, func() {
-		if isSwarm {
-			u.checkSwarm(ctx)
-		} else {
-			u.checkDocker(ctx)
-		}
-	})
-	if err != nil {
-		return fmt.Errorf("invalid schedule: %w", err)
-	}
 	c.Start()
 	<-ctx.Done()
 	<-c.Stop().Done()
 	return nil
 }
 
-// filters returns the list filters honoring the require-label opt-in.
+func (u *Updater) check(ctx context.Context) {
+	info, err := u.cli.Info(ctx, dockerclient.InfoOptions{})
+	if err != nil {
+		slog.Error("Failed to query docker daemon", "error", err)
+		return
+	}
+
+	s := info.Info.Swarm
+	if s.LocalNodeState == swarm.LocalNodeStateActive && s.ControlAvailable {
+		slog.Debug("Checking for updates", "mode", "swarm")
+		u.checkSwarm(ctx)
+		return
+	}
+	slog.Debug("Checking for updates", "mode", "standalone")
+	u.checkDocker(ctx)
+}
+
 func (u *Updater) filters() dockerclient.Filters {
 	filters := dockerclient.Filters{}
 	if u.RequireLabel {
@@ -110,11 +124,10 @@ func (u *Updater) filters() dockerclient.Filters {
 	return filters
 }
 
-// updateAll runs fn for each index concurrently, limited to three in flight.
-func updateAll(ctx context.Context, n int, fn func(context.Context, int)) {
+func updateAll[T any](ctx context.Context, items []T, fn func(context.Context, T)) {
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 3)
-	for i := range n {
+	sem := make(chan struct{}, maxConcurrentUpdates)
+	for _, item := range items {
 		select {
 		case <-ctx.Done():
 			wg.Wait()
@@ -123,8 +136,74 @@ func updateAll(ctx context.Context, n int, fn func(context.Context, int)) {
 		}
 		wg.Go(func() {
 			defer func() { <-sem }()
-			fn(ctx, i)
+			fn(ctx, item)
 		})
 	}
 	wg.Wait()
+}
+
+// selfContainerID returns the ID of the container orbitd runs in, or "" on
+// the host.
+func selfContainerID() string {
+	if data, err := os.ReadFile("/proc/self/mountinfo"); err == nil {
+		if id := containerIDFromMountinfo(data); id != "" {
+			return id
+		}
+	}
+	if h, err := os.Hostname(); err == nil && shortIDRe.MatchString(h) {
+		return h
+	}
+	return ""
+}
+
+// containerIDFromMountinfo reads the ID from the /etc/hostname bind mount.
+// Other paths are ignored, since the host lists mounts of every container.
+func containerIDFromMountinfo(data []byte) string {
+	sc := bufio.NewScanner(bytes.NewReader(data))
+	for sc.Scan() {
+		fields := strings.Fields(sc.Text())
+		if len(fields) < 5 || fields[4] != "/etc/hostname" {
+			continue
+		}
+		if m := containerIDRe.FindStringSubmatch(fields[3]); m != nil {
+			return m[1]
+		}
+	}
+	return ""
+}
+
+func (r *run) target(key string, fn func() (string, error)) (string, error) {
+	if r == nil {
+		return fn()
+	}
+	return r.targets.do(key, fn)
+}
+
+func (r *run) pull(key string, fn func() error) error {
+	if r == nil {
+		return fn()
+	}
+	_, err := r.pulls.do(key, func() (struct{}, error) { return struct{}{}, fn() })
+	return err
+}
+
+func (r *run) digest(key string, fn func() (string, error)) (string, error) {
+	if r == nil {
+		return fn()
+	}
+	return r.digests.do(key, fn)
+}
+
+func (o *onceMap[V]) do(key string, fn func() (V, error)) (V, error) {
+	o.mu.Lock()
+	f, ok := o.m[key]
+	if !ok {
+		if o.m == nil {
+			o.m = make(map[string]func() (V, error))
+		}
+		f = sync.OnceValues(fn)
+		o.m[key] = f
+	}
+	o.mu.Unlock()
+	return f()
 }

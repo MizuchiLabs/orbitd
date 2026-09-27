@@ -13,16 +13,13 @@ type resolvedImage struct {
 	policy  policy.Policy
 }
 
-func hasNamedImage(imageRef string) bool {
-	return imageRef != "" && !strings.HasPrefix(imageRef, "sha256:")
-}
-
 func (u *Updater) resolveTargetImage(
 	ctx context.Context,
+	r *run,
 	imgRef string,
 	labels map[string]string,
 ) (resolvedImage, error) {
-	current, _, _ := strings.Cut(imgRef, "@") // reference without trailing digest
+	current, _, _ := strings.Cut(imgRef, "@")
 
 	pol := u.Policy
 	if raw := strings.TrimSpace(labels["orbitd.policy"]); raw != "" {
@@ -32,7 +29,9 @@ func (u *Updater) resolveTargetImage(
 	target := current
 	if pol != policy.Digest {
 		var err error
-		target, err = policy.FindUpdateTarget(ctx, current, pol)
+		target, err = r.target(current+"|"+pol.String(), func() (string, error) {
+			return policy.FindUpdateTarget(ctx, current, pol)
+		})
 		if err != nil {
 			return resolvedImage{}, err
 		}
@@ -43,6 +42,10 @@ func (u *Updater) resolveTargetImage(
 		target:  target,
 		policy:  pol,
 	}, nil
+}
+
+func hasNamedImage(imageRef string) bool {
+	return imageRef != "" && !strings.HasPrefix(imageRef, "sha256:")
 }
 
 func pinImageDigest(imageRef, digest string) string {
