@@ -19,6 +19,7 @@ Orbitd monitors your containers and automatically updates them when new images a
 - **Flexible Policies**: Digest-only or semantic versioning (patch/minor/major)
 - **Label Control**: Opt-in or opt-out specific containers
 - **Image Cleanup**: Removes old images after successful updates
+- **Compose Friendly**: Updated containers stay in sync, so `docker compose up` won't recreate them
 
 ## Quick Start
 
@@ -34,7 +35,7 @@ services:
 
 That's it. Orbitd will check all containers every 12 hours (by default) and update them when new digests are available.
 
-Since v0.1.9, you can also run orbitd in docker swarm:
+Since v0.1.9, you can also run orbitd in docker swarm (it must run on a manager node):
 
 ```yaml
 services:
@@ -57,7 +58,7 @@ All settings are optional. Configure via environment variables or CLI flags:
 | ---------------------- | ----------------- | ------------ | ------------------------------------ |
 | `ORBITD_SCHEDULE`      | `--schedule`      | `@every 12h` | Cron schedule or interval descriptor |
 | `ORBITD_POLICY`        | `--policy`        | `digest`     | Update policy (see below)            |
-| `ORBITD_CLEANUP`       | `--cleanup`       | `true`       | Remove old images after updates      |
+| `ORBITD_CLEANUP`       | `--cleanup`       | `true`       | Remove replaced images after updates |
 | `ORBITD_REQUIRE_LABEL` | `--require-label` | `false`      | Only update labeled containers       |
 | `ORBITD_DEBUG`         | `--debug`         | `false`      | Enable verbose logging               |
 
@@ -81,7 +82,18 @@ Orbitd uses standard cron expressions or interval descriptors for scheduling upd
 | `minor`  | Minor + patch versions         | `1.2.3` → `1.9.0`           |
 | `major`  | Any newer version              | `1.2.3` → `2.0.0`           |
 
-> Semver policies require valid semver tags. Non-semver tags fall back to digest updates.
+> Semver policies require version tags. Non-version tags fall back to digest updates.
+>
+> Only tags written like the current one are considered: `16.2-alpine` moves to `16.4-alpine` but never to `16.4-bookworm`, a floating `1.25` moves to `1.26` but not to a pinned `1.25.3`, and `v1.2.0` only matches other `v`-prefixed tags. Prereleases (`-rc.1`, `-beta`, …) are only picked when the current tag is one.
+
+### Update Behavior
+
+- Containers are recreated with their explicit configuration (env, labels, command, volumes, networks, …). Defaults inherited from the old image are dropped so the new image's defaults apply.
+- Containers are stopped using their own stop timeout (`--stop-timeout` / `stop_grace_period`).
+- Anonymous volumes are carried over to the new container.
+- Containers sharing another container's network (`network_mode: container:…` / `service:…`) are reattached when that container is updated.
+- Containers pinned to a digest (`image@sha256:…`) are left alone.
+- In swarm mode, services are updated through the swarm manager. Swarm task containers are never touched by a standalone instance, e.g. one running on a worker node.
 
 ## Container Labels
 
@@ -147,7 +159,3 @@ This config file is populated by running `docker login` on your host. Orbitd wil
 ## License
 
 Apache 2.0 License - see [LICENSE](LICENSE) for details
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
