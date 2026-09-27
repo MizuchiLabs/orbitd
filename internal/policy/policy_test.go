@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Masterminds/semver/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -29,14 +28,19 @@ func TestParse(t *testing.T) {
 		{"major", Major},
 		{"DIGEST", Digest},
 		{"  patch  ", Patch},
-		{"unknown", Digest},
-		{"", Digest},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.input, func(t *testing.T) {
-			assert.Equal(t, tc.expected, Parse(tc.input))
+			p, err := Parse(tc.input)
+			require.NoError(t, err)
+			assert.Equal(t, tc.expected, p)
 		})
+	}
+
+	for _, input := range []string{"unknown", ""} {
+		_, err := Parse(input)
+		assert.Error(t, err, input)
 	}
 }
 
@@ -129,12 +133,26 @@ func TestIsAllowed(t *testing.T) {
 			false,
 		}, // Don't move from stable to prerelease even for major
 		{"2.0.0", "2.0.0-rc.1", Major, true}, // Move from prerelease to stable for major
+
+		// Tag shape must match
+		{"16.2-bookworm", "16.2-alpine", Patch, false}, // No variant switch
+		{"16.4-alpine", "16.2-alpine", Minor, true},    // Same variant
+		{"16.4", "16.2-alpine", Minor, false},          // Variant dropped
+		{"1.25.3", "1.25", Patch, false},               // No floating -> pinned
+		{"1.26", "1.25", Minor, true},                  // Floating minor stays floating
+		{"20240101", "3", Major, false},                // Date tag is not a version bump
+		{"10", "9", Major, true},                       // Normal width growth
+		{"1.3.0", "v1.2.0", Minor, false},              // Prefix must match
+		{"v1.3.0", "v1.2.0", Minor, true},
+		{"1.2.4-alpine", "1.2.3-rc.1", Patch, false}, // Prerelease cannot switch variant
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.v+"_"+tc.current+"_"+tc.policy.String(), func(t *testing.T) {
-			v, _ := semver.NewVersion(tc.v)
-			current, _ := semver.NewVersion(tc.current)
+			v, ok := parseVersion(tc.v)
+			require.True(t, ok)
+			current, ok := parseVersion(tc.current)
+			require.True(t, ok)
 			assert.Equal(t, tc.expected, isAllowed(v, current, tc.policy))
 		})
 	}
@@ -175,7 +193,10 @@ func TestFindUpdateTargetInvalidImage(t *testing.T) {
 
 func TestFindBestVersion(t *testing.T) {
 	repo := "nginx"
-	tags := []string{"1.20.0", "1.21.0", "1.21.1", "1.22.0", "2.0.0"}
+	tags := []string{
+		"1.20.0", "1.21.0", "1.21.1", "1.22.0", "2.0.0",
+		"1.21.2-alpine", "1.23", "2.1.0-rc.1", "latest", "20240101",
+	}
 
 	tests := []struct {
 		current  string
@@ -186,11 +207,14 @@ func TestFindBestVersion(t *testing.T) {
 		{"1.21.0", Minor, "nginx:1.22.0"},
 		{"1.21.0", Major, "nginx:2.0.0"},
 		{"2.0.0", Patch, "nginx:2.0.0"},
+		{"1.21.0-alpine", Patch, "nginx:1.21.2-alpine"},
+		{"1.21", Major, "nginx:1.23"},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.current+"_"+tc.policy.String(), func(t *testing.T) {
-			current, _ := semver.NewVersion(tc.current)
+			current, ok := parseVersion(tc.current)
+			require.True(t, ok)
 			best := findBestVersion(repo, tags, current, tc.policy)
 			assert.Equal(t, tc.expected, best)
 		})
