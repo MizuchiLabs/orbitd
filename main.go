@@ -36,7 +36,7 @@ func main() {
 			}
 			home, err := os.UserHomeDir()
 			if err != nil {
-				return ctx, nil
+				return ctx, nil //nolint:nilerr // no home dir means no docker config to load
 			}
 			configPath := filepath.Join(home, ".docker", "config.json")
 			if _, err := os.Stat(configPath); os.IsNotExist(err) {
