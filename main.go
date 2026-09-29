@@ -7,10 +7,11 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/urfave/cli/v3"
+
 	"github.com/mizuchilabs/kata/buildinfo"
 	"github.com/mizuchilabs/kata/logx"
 	"github.com/mizuchilabs/kata/sigx"
-	"github.com/urfave/cli/v3"
 
 	"github.com/mizuchilabs/orbitd/internal/policy"
 	"github.com/mizuchilabs/orbitd/internal/updater"
