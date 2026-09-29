@@ -144,9 +144,10 @@ func isAllowed(v, current version, policy Policy) bool {
 		return v.Major() == current.Major() && v.Minor() == current.Minor()
 	case Minor:
 		return v.Major() == current.Major()
-	default:
+	case Major, Digest:
 		return true
 	}
+	return false
 }
 
 func parseVersion(tag string) (version, bool) {
