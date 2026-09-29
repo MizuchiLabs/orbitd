@@ -2,14 +2,6 @@ version: 2
 project_name: orbitd
 report_sizes: true
 
-before:
-  hooks:
-    - go fmt ./...
-    - go vet ./...
-    - go test ./...
-    - go mod tidy
-    - go mod verify
-
 builds:
   - binary: "{{ .ProjectName }}"
     env: [CGO_ENABLED=0]
@@ -33,19 +25,12 @@ builds:
       - goos: windows
         goarch: arm64
 
-upx:
-  - enabled: true
-    lzma: true
-    compress: best
-    goos: [linux]
-
 kos:
   - main: .
-    base_image: alpine
+    base_image: gcr.io/distroless/static-debian13
     repositories: [ghcr.io/mizuchilabs/orbitd]
     bare: true
     preserve_import_paths: false
-    sbom: none
     creation_time: "{{ .CommitTimestamp }}"
     tags:
       - "{{ .Version }}"
@@ -63,6 +48,11 @@ signs:
       - "--yes"
       - "${artifact}"
       - "--bundle=${signature}"
+
+docker_signs:
+  - cmd: cosign
+    artifacts: manifests
+    args: ["sign", "${artifact}@${digest}", "--yes"]
 
 sboms:
   - cmd: syft
