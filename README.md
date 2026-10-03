@@ -30,19 +30,19 @@ services:
     container_name: orbitd
     restart: unless-stopped
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/run/docker.sock:/var/run/docker.sock
 ```
 
 That's it. Orbitd will check all containers every 12 hours (by default) and update them when new digests are available.
 
-Since v0.1.9, you can also run orbitd in docker swarm (it must run on a manager node):
+You can also run orbitd in docker swarm (it must run on a manager node):
 
 ```yaml
 services:
   orbitd:
     image: ghcr.io/mizuchilabs/orbitd:latest
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/run/docker.sock:/var/run/docker.sock
     deploy:
       replicas: 1
       placement:
@@ -129,7 +129,7 @@ services:
 docker run -d \
   --name orbitd \
   --restart unless-stopped \
-  -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   ghcr.io/mizuchilabs/orbitd:latest
 ```
 
@@ -150,7 +150,7 @@ services:
   orbitd:
     image: ghcr.io/mizuchilabs/orbitd:latest
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/run/docker.sock:/var/run/docker.sock
       - /home/youruser/.docker/config.json:/root/.docker/config.json:ro
 ```
 
