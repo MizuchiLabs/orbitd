@@ -220,3 +220,27 @@ func TestFindBestVersion(t *testing.T) {
 		})
 	}
 }
+
+func TestFindBestVersionNumberedPrerelease(t *testing.T) {
+	tests := []struct {
+		current  string
+		tags     []string
+		expected string
+	}{
+		{"1.0.0-rc9", []string{"1.0.0-rc2", "1.0.0-rc10", "1.0.0-rc11"}, "app:1.0.0-rc11"},
+		{"1.0.0-rc10", []string{"1.0.0-rc9"}, "app:1.0.0-rc10"},
+		{"1.0.0-rc10", []string{"1.0.0"}, "app:1.0.0"},
+		{"1.0.0-beta12", []string{"1.0.0-rc1"}, "app:1.0.0-rc1"},
+		{"1.0.0-rc-9", []string{"1.0.0-rc-10"}, "app:1.0.0-rc-10"},
+		{"1.0.0-rc.9", []string{"1.0.0-rc.10"}, "app:1.0.0-rc.10"},
+		{"1.0.0-rc10", []string{"1.1.0-rc1"}, "app:1.1.0-rc1"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.current, func(t *testing.T) {
+			current, ok := parseVersion(tc.current)
+			require.True(t, ok)
+			assert.Equal(t, tc.expected, findBestVersion("app", tc.tags, current, Minor))
+		})
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -26,6 +27,7 @@ var (
 	// Splits e.g. "v1.25.3-alpine" into prefix, up to three numbers and suffix.
 	versionRe    = regexp.MustCompile(`^(v?)(\d+)(?:\.(\d+))?(?:\.(\d+))?([-+].*)?$`)
 	prereleaseRe = regexp.MustCompile(`(?i)^-(alpha|beta|pre|preview|rc)([.-]?\d+)*$`)
+	numberedRe   = regexp.MustCompile(`^([a-zA-Z]+)-?(\d+)$`)
 )
 
 // Policy defines how aggressively to update container images.
@@ -127,7 +129,7 @@ func findBestVersion(repo string, tags []string, current version, policy Policy)
 	best := current
 	for _, tag := range tags {
 		v, ok := parseVersion(tag)
-		if ok && isAllowed(v, current, policy) && v.GreaterThan(best.Version) {
+		if ok && isAllowed(v, current, policy) && v.greaterThan(best) {
 			best = v
 		}
 	}
@@ -135,7 +137,7 @@ func findBestVersion(repo string, tags []string, current version, policy Policy)
 }
 
 func isAllowed(v, current version, policy Policy) bool {
-	if !v.sameShape(current) || !v.GreaterThan(current.Version) {
+	if !v.sameShape(current) || !v.greaterThan(current) {
 		return false
 	}
 
@@ -182,3 +184,17 @@ func (v version) sameShape(current version) bool {
 }
 
 func (v version) isPrerelease() bool { return prereleaseRe.MatchString(v.suffix) }
+
+// greaterThan is semver order, except "rc10" sorts after "rc9". Semver compares
+// those as text, but tags mean a number.
+func (v version) greaterThan(w version) bool {
+	a := numberedRe.FindStringSubmatch(v.Prerelease())
+	b := numberedRe.FindStringSubmatch(w.Prerelease())
+	if a == nil || b == nil || a[1] != b[1] ||
+		v.Major() != w.Major() || v.Minor() != w.Minor() || v.Patch() != w.Patch() {
+		return v.GreaterThan(w.Version)
+	}
+	an, _ := strconv.Atoi(a[2])
+	bn, _ := strconv.Atoi(b[2])
+	return an > bn
+}
