@@ -589,6 +589,21 @@ func TestHostConfigForMountVolumes(t *testing.T) {
 	assert.Empty(t, c.HostConfig.Mounts[1].Source, "original config mutated")
 }
 
+func TestHostConfigForVolumesFromReadOnly(t *testing.T) {
+	c := dockercontainer.InspectResponse{
+		HostConfig: &dockercontainer.HostConfig{VolumesFrom: []string{"source:ro"}},
+		Mounts: []dockercontainer.MountPoint{
+			{Type: mount.TypeVolume, Name: "vol1", Destination: "/data", RW: false},
+		},
+	}
+
+	hc := hostConfigFor(c)
+
+	// A bind would override the daemon's read-only mount from VolumesFrom.
+	assert.Empty(t, hc.Binds, "read-only volumes-from mount pinned as a writable bind")
+	assert.Equal(t, []string{"source:ro"}, hc.VolumesFrom)
+}
+
 func TestUpdateDockerSkipsDigestPinned(t *testing.T) {
 	f := newFakeClient()
 	u := newTestUpdater(f)

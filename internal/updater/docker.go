@@ -386,6 +386,10 @@ func hostConfigFor(c dockercontainer.InspectResponse) *dockercontainer.HostConfi
 	}
 
 	for _, m := range c.Mounts {
+		// Anonymous volumes are always writable, so a read-only one here comes from VolumesFrom.
+		if !m.RW && len(hc.VolumesFrom) > 0 {
+			continue
+		}
 		if name, ok := volumes[m.Destination]; ok && !covered[m.Destination] {
 			hc.Binds = append(hc.Binds, name+":"+m.Destination)
 		}
