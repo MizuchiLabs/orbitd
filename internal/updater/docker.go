@@ -162,7 +162,11 @@ func (u *Updater) recreateDocker(ctx context.Context, id, image, imageID string)
 
 	config := stripImageDefaults(*old.Config, oldImage.Config)
 	config.Image = image
-	if config.Hostname == shortID(old.ID) {
+	switch {
+	case old.HostConfig.NetworkMode.IsContainer():
+		// The daemon copied these from the namespace owner and rejects them on create.
+		config.Hostname, config.Domainname = "", ""
+	case config.Hostname == shortID(old.ID):
 		config.Hostname = ""
 	}
 	// Compose recreates containers whose label differs from the local image.

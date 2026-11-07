@@ -657,6 +657,29 @@ func TestListDockerPartitions(t *testing.T) {
 	assert.Equal(t, "dependent", dependents[0].ID)
 }
 
+func TestRecreateDockerSharedNetworkClearsHostname(t *testing.T) {
+	f := newFakeClient()
+	f.addContainer()
+
+	res := f.inspects["c1"]
+	res.Container.HostConfig.NetworkMode = "container:dind"
+	res.Container.Config.Hostname = "a1b2c3d4e5f6"
+	res.Container.Config.Domainname = "example.com"
+	f.inspects["c1"] = res
+
+	u := newTestUpdater(f)
+	err := u.recreateDocker(t.Context(), "c1", "nginx:1.25", "sha256:new")
+	require.NoError(t, err)
+
+	require.Len(t, f.created, 1)
+	assert.Equal(t,
+		dockercontainer.NetworkMode("container:dind"),
+		f.lastCreateOpts.HostConfig.NetworkMode,
+	)
+	assert.Empty(t, f.lastCreateOpts.Config.Hostname, "daemon rejects hostname with container network mode")
+	assert.Empty(t, f.lastCreateOpts.Config.Domainname)
+}
+
 func TestRecreateDockerRepointsDependents(t *testing.T) {
 	f := newFakeClient()
 	f.addContainer()
